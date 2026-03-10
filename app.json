@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Silk Road Duo",
+    "slug": "silk-road-duo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.silkroadduo.app"
+    },
+    "android": {
+      "package": "com.silkroadduo.app"
+    },
+    "newArchEnabled": true,
+    "extra": {
+      "eas": {
+        "projectId": "1b16f9e7-520c-448f-8e42-0e1ee3456dd9"
+      }
+    }
+  }
+}
