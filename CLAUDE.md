@@ -23,6 +23,12 @@ npx eas build:list --limit 5                   # check build status
 - **production** profile: outputs `.aab`, auto-increments version code — use for Play Store
 - Local builds (`--local`) are not supported on Windows; all builds run on Expo's cloud servers
 
+### Installing a preview APK on a device
+
+`adb` is not on PATH on this machine, so USB install via `adb install` does not work directly.
+Preferred method: open the APK artifact URL from the build in the Android device's browser and tap to download and install.
+The build detail page is at `https://expo.dev/accounts/schepsterwasp/projects/silk-road-duo/builds/<build-id>`.
+
 There is no test suite and no linter configured.
 
 ### SDK / dependency notes
