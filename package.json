@@ -8,15 +8,18 @@
     "ios": "expo start --ios"
   },
   "dependencies": {
-    "expo": "~54.0.0",
-    "expo-status-bar": "~3.0.9",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-safe-area-context": "~5.6.0"
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "expo": "^56.0.3",
+    "expo-status-bar": "~56.0.4",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
-    "babel-preset-expo": "~54.0.10"
+    "babel-preset-expo": "~56.0.0"
   },
   "private": true
 }

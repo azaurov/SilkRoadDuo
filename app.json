@@ -12,11 +12,13 @@
     "android": {
       "package": "com.silkroadduo.app"
     },
-    "newArchEnabled": true,
     "extra": {
       "eas": {
         "projectId": "1b16f9e7-520c-448f-8e42-0e1ee3456dd9"
       }
-    }
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }

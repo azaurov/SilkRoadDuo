@@ -11,7 +11,23 @@ npm run android    # launch on Android emulator/device
 npm run ios        # launch on iOS simulator (macOS only)
 ```
 
+### EAS Builds
+
+```bash
+npx eas build -p android --profile preview     # installable APK for sideloading
+npx eas build -p android --profile production  # .aab for Play Store submission
+npx eas build:list --limit 5                   # check build status
+```
+
+- **preview** profile: `buildType: "apk"`, `distribution: "internal"` — use this for test installs on devices
+- **production** profile: outputs `.aab`, auto-increments version code — use for Play Store
+- Local builds (`--local`) are not supported on Windows; all builds run on Expo's cloud servers
+
 There is no test suite and no linter configured.
+
+### SDK / dependency notes
+
+The project uses **Expo SDK 56**. If adding new packages, always use `npx expo install <package>` (not `npm install`) so Expo picks the SDK-compatible version. Run `npx expo-doctor` to verify compatibility after any dependency changes.
 
 ## Architecture
 
