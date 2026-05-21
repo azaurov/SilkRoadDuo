@@ -39,6 +39,16 @@ const LANGS = [
     color: "#FF4B4B", shadow: "#CC1111", pale: "#FFF0F0",
     desc: "Turkic · Heart of the ancient Silk Road",
   },
+  {
+    id: "hebrew", name: "Hebrew", native: "עברית", emoji: "✡️",
+    color: "#4C97FF", shadow: "#3C7FCC", pale: "#EFF5FF",
+    desc: "Semitic · Sacred language of Torah & Jewish tradition",
+  },
+  {
+    id: "aramaic", name: "Aramaic", native: "ܐܪܡܝܐ", emoji: "🏺",
+    color: "#26C6DA", shadow: "#00ACC1", pale: "#E0F7FA",
+    desc: "Ancient · Lingua franca of the Near East",
+  },
 ];
 
 /* ─── Lesson Topics ─────────────────────────────────────────────────────── */
@@ -61,7 +71,7 @@ const ACHIEVEMENTS = [
   { id: "xp_100", name: "XP Collector", emoji: "⚡", desc: "Earn 100 total XP", check: (s) => s.totalXP >= 100 },
   { id: "xp_500", name: "XP Master", emoji: "💎", desc: "Earn 500 total XP", check: (s) => s.totalXP >= 500 },
   { id: "trilingual", name: "Trilingual", emoji: "🗣️", desc: "Try all 3 core languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 },
-  { id: "polyglot", name: "Polyglot", emoji: "🌐", desc: "Try all 5 languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 && s.arabic_xp > 0 && s.uzbek_xp > 0 },
+  { id: "polyglot", name: "Polyglot", emoji: "🌐", desc: "Try all 7 languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 && s.arabic_xp > 0 && s.uzbek_xp > 0 && s.hebrew_xp > 0 && s.aramaic_xp > 0 },
   { id: "perfect_10", name: "Perfectionist", emoji: "🏅", desc: "Complete 10 perfect lessons", check: (s) => s.perfectLessons >= 10 },
   { id: "lessons_5", name: "Dedicated", emoji: "📚", desc: "Complete 5 lessons", check: (s) => s.lessons >= 5 },
   { id: "lessons_25", name: "Scholar", emoji: "🎓", desc: "Complete 25 lessons", check: (s) => s.lessons >= 25 },
@@ -89,6 +99,8 @@ function buildPrompt(langId, topicId) {
     sogdian: "Sogdian (ancient Silk Road language, use romanized transcription)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
+    hebrew: "Hebrew (use both Hebrew script and romanized transliteration)",
+    aramaic: "Aramaic (Classical/Syriac, use romanized transliteration)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
   return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 8 exercises.${topicHint}
@@ -691,7 +703,7 @@ function HomeScreen({ onSelect, stats, onAchievements }) {
         <View style={styles.homeHeader}>
           <Text style={styles.homeHeaderEyebrow}>THE SILK ROAD</Text>
           <Text style={styles.homeTitle}>Language Lab</Text>
-          <Text style={styles.homeSubtitle}>Five ancient languages, one modern method</Text>
+          <Text style={styles.homeSubtitle}>Seven ancient languages, one modern method</Text>
         </View>
 
         {/* Stats */}
