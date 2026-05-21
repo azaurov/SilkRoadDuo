@@ -7,8 +7,8 @@ import {
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const API = "https://api.anthropic.com/v1/messages";
-const API_KEY = "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";
+const API = "https://api.groq.com/openai/v1/chat/completions";
+const API_KEY = "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";
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
 
@@ -124,18 +124,17 @@ async function fetchLesson(langId, topicId) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": API_KEY,
-      "anthropic-version": "2023-06-01",
+      "Authorization": `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "llama-3.3-70b-versatile",
       max_tokens: 2000,
       messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
     }),
   });
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
-  const text = d.content?.[0]?.text || "[]";
+  const text = d.choices?.[0]?.message?.content || "[]";
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
