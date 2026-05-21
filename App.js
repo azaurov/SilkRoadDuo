@@ -8,7 +8,7 @@ import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const API = "https://api.anthropic.com/v1/messages";
-const API_KEY = "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"; // ← paste your key from console.anthropic.com
+const API_KEY = "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";
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
 
@@ -29,19 +29,72 @@ const LANGS = [
     color: "#CE82FF", shadow: "#9C4FD1", pale: "#F7EEFF",
     desc: "Ancient · Voice of the Silk Road",
   },
+  {
+    id: "arabic", name: "Arabic", native: "العربية", emoji: "🌙",
+    color: "#FF9600", shadow: "#E08500", pale: "#FFF8ED",
+    desc: "Classical · Language of trade & scholarship",
+  },
+  {
+    id: "uzbek", name: "Uzbek", native: "O'zbek", emoji: "🌟",
+    color: "#FF4B4B", shadow: "#CC1111", pale: "#FFF0F0",
+    desc: "Turkic · Heart of the ancient Silk Road",
+  },
+];
+
+/* ─── Lesson Topics ─────────────────────────────────────────────────────── */
+const TOPICS = [
+  { id: "greetings", name: "Greetings", emoji: "👋", desc: "Hello, goodbye & pleasantries" },
+  { id: "food", name: "Food & Market", emoji: "🍎", desc: "Fruits, spices & market talk" },
+  { id: "numbers", name: "Numbers", emoji: "🔢", desc: "Count from 1 to 100" },
+  { id: "family", name: "Family", emoji: "👨‍👩‍👧", desc: "Parents, siblings & relatives" },
+  { id: "travel", name: "Travel", emoji: "🗺️", desc: "Roads, cities & directions" },
+  { id: "nature", name: "Nature", emoji: "🌿", desc: "Animals, plants & landscape" },
+  { id: "colors", name: "Colors", emoji: "🎨", desc: "The full color spectrum" },
+  { id: "time", name: "Time & Days", emoji: "📅", desc: "Days, months & telling time" },
+];
+
+/* ─── Achievements ──────────────────────────────────────────────────────── */
+const ACHIEVEMENTS = [
+  { id: "first_lesson", name: "First Steps", emoji: "👣", desc: "Complete your first lesson", check: (s) => s.lessons >= 1 },
+  { id: "streak_3", name: "On Fire", emoji: "🔥", desc: "Reach a 3-day streak", check: (s) => s.streak >= 3 },
+  { id: "streak_7", name: "Week Warrior", emoji: "⚔️", desc: "Reach a 7-day streak", check: (s) => s.streak >= 7 },
+  { id: "xp_100", name: "XP Collector", emoji: "⚡", desc: "Earn 100 total XP", check: (s) => s.totalXP >= 100 },
+  { id: "xp_500", name: "XP Master", emoji: "💎", desc: "Earn 500 total XP", check: (s) => s.totalXP >= 500 },
+  { id: "trilingual", name: "Trilingual", emoji: "🗣️", desc: "Try all 3 core languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 },
+  { id: "polyglot", name: "Polyglot", emoji: "🌐", desc: "Try all 5 languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 && s.arabic_xp > 0 && s.uzbek_xp > 0 },
+  { id: "perfect_10", name: "Perfectionist", emoji: "🏅", desc: "Complete 10 perfect lessons", check: (s) => s.perfectLessons >= 10 },
+  { id: "lessons_5", name: "Dedicated", emoji: "📚", desc: "Complete 5 lessons", check: (s) => s.lessons >= 5 },
+  { id: "lessons_25", name: "Scholar", emoji: "🎓", desc: "Complete 25 lessons", check: (s) => s.lessons >= 25 },
+];
+
+/* ─── Cultural Tips ─────────────────────────────────────────────────────── */
+const CULTURAL_TIPS = [
+  { emoji: "🐪", text: "Sogdian merchants dominated Silk Road trade from the 4th–8th centuries, leaving inscriptions from China to Constantinople." },
+  { emoji: "📜", text: "Bukharian Jews trace their community to the ancient Persian diaspora — their dialect preserves medieval Tajik vocabulary lost elsewhere." },
+  { emoji: "🌹", text: "Persian poetry gave the world over 70,000 verses from Hafez alone. 'Ghazal' — a love poem form — spread from Farsi to Urdu and Turkish." },
+  { emoji: "🕌", text: "Bukhara (in modern Uzbekistan) was once the world's most important center of Islamic scholarship, home to 300 mosques and 100 madrasas." },
+  { emoji: "🌙", text: "Arabic became a lingua franca of science, medicine and philosophy in the medieval world — 'algebra', 'algorithm' and 'alcohol' are all Arabic loanwords." },
+  { emoji: "🌟", text: "The Uzbek city of Samarkand was a key Silk Road hub where Chinese, Indian, Persian and Turkic cultures intermingled for centuries." },
+  { emoji: "🍊", text: "The word 'orange' entered English via Old French 'orenge', from Arabic 'nāranj', from Persian 'nārang', from Sanskrit 'nāraṅga'." },
+  { emoji: "🎶", text: "The oud (عود), ancestor of the European lute, traveled westward along the Silk Road and shaped Renaissance music." },
+  { emoji: "🧭", text: "The Silk Road was not a single road but a network of routes spanning 4,000 miles from China to the Mediterranean." },
+  { emoji: "💰", text: "Sogdian merchants used sophisticated letters of credit — effectively early banking — to transfer wealth across thousands of miles without carrying gold." },
 ];
 
 /* ─── AI Helpers ────────────────────────────────────────────────────────── */
-function buildPrompt(langId) {
+function buildPrompt(langId, topicId) {
   const names = {
     bukharian: "Bukharian (Bukhori/Judeo-Tajik)",
     farsi: "Farsi (Persian)",
     sogdian: "Sogdian (ancient Silk Road language, use romanized transcription)",
+    arabic: "Arabic (use both Arabic script and romanized transliteration)",
+    uzbek: "Uzbek (modern Latin-script Uzbek)",
   };
-  return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 6 exercises.
+  const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
+  return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 8 exercises.${topicHint}
 Return ONLY a valid JSON array, no markdown fences, no explanation.
 
-Use these types in order: mcq, mcq, match, mcq, fillblank, mcq
+Use these types in order: mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq
 
 MCQ: {"type":"mcq","direction":"target_to_en","word":"<romanized>","word_native":"<native script>","english":"<meaning>","correct":"<correct option>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"],"fun_fact":"<cultural fact>"}
 
@@ -49,10 +102,12 @@ MATCH (4 pairs): {"type":"match","pairs":[{"target":"<romanized>","english":"<me
 
 FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ blank>","correct_target":"<target word romanized>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"]}
 
-Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts.`;
+WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<word1>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
+
+Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE words should be 4-5 romanized target-language words that form a simple sentence.`;
 }
 
-async function fetchLesson(langId) {
+async function fetchLesson(langId, topicId) {
   const r = await fetch(API, {
     method: "POST",
     headers: {
@@ -62,35 +117,26 @@ async function fetchLesson(langId) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
-      messages: [{ role: "user", content: buildPrompt(langId) }],
+      max_tokens: 2000,
+      messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
     }),
   });
   const d = await r.json();
-  console.log("STATUS:", r.status);
-  console.log("RESPONSE:", JSON.stringify(d).slice(0, 600));
-  if (!r.ok || d.error) {
-    throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
-  }
+  if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const text = d.content?.[0]?.text || "[]";
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
 /* ─── Animated Heart ────────────────────────────────────────────────────── */
 function Heart({ filled }) {
-  return (
-    <Text style={{ fontSize: 22, opacity: filled ? 1 : 0.25 }}>❤️</Text>
-  );
+  return <Text style={{ fontSize: 22, opacity: filled ? 1 : 0.25 }}>❤️</Text>;
 }
 
 /* ─── Progress Bar ──────────────────────────────────────────────────────── */
 function ProgressBar({ current, total, color }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: Math.max(0.04, current / total),
-      duration: 400, useNativeDriver: false,
-    }).start();
+    Animated.timing(anim, { toValue: Math.max(0.04, current / total), duration: 400, useNativeDriver: false }).start();
   }, [current]);
   const width = anim.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] });
   return (
@@ -215,7 +261,7 @@ function ExerciseMatch({ ex, lang, onComplete }) {
     }
   }, [selLeft, selRight]);
 
-  const tileStyle = (key, isLeft, active, isMatched, isWrong) => [
+  const tileStyle = (active, isMatched, isWrong) => [
     styles.matchTile,
     active && { borderColor: lang.color, backgroundColor: lang.pale },
     isMatched && styles.matchMatched,
@@ -231,7 +277,7 @@ function ExerciseMatch({ ex, lang, onComplete }) {
             const active = selLeft?.target === p.target;
             const isWrong = wrong?.startsWith(p.target);
             return (
-              <TouchableOpacity key={i} style={tileStyle(p.target, true, active, isMatched, isWrong)}
+              <TouchableOpacity key={i} style={tileStyle(active, isMatched, isWrong)}
                 onPress={() => !isMatched && setSelLeft(p)} activeOpacity={0.7}>
                 <Text style={[styles.matchText, isMatched && { color: "#AFAFAF", textDecorationLine: "line-through" }, active && { color: lang.color }]}>
                   {p.target}
@@ -246,7 +292,7 @@ function ExerciseMatch({ ex, lang, onComplete }) {
             const active = selRight?.english === p.english;
             const isWrong = wrong?.endsWith(p.english);
             return (
-              <TouchableOpacity key={i} style={tileStyle(p.english, false, active, isMatched, isWrong)}
+              <TouchableOpacity key={i} style={tileStyle(active, isMatched, isWrong)}
                 onPress={() => !isMatched && setSelRight(p)} activeOpacity={0.7}>
                 <Text style={[styles.matchText, isMatched && { color: "#AFAFAF", textDecorationLine: "line-through" }, active && { color: lang.color }]}>
                   {p.english}
@@ -264,6 +310,77 @@ function ExerciseMatch({ ex, lang, onComplete }) {
           }} />
         ))}
       </View>
+    </View>
+  );
+}
+
+/* ─── Word Arrange Exercise ─────────────────────────────────────────────── */
+function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
+  const [placed, setPlaced] = useState([]);
+  const [bank, setBank] = useState(() => [...ex.words].sort(() => Math.random() - 0.5));
+  const [submitted, setSubmitted] = useState(false);
+  const [correct, setCorrect] = useState(null);
+
+  const addWord = (word, idx) => {
+    if (submitted) return;
+    setPlaced(p => [...p, word]);
+    setBank(b => b.filter((_, i) => i !== idx));
+  };
+
+  const removeWord = (word, idx) => {
+    if (submitted) return;
+    setBank(b => [...b, word]);
+    setPlaced(p => p.filter((_, i) => i !== idx));
+  };
+
+  const submit = () => {
+    if (placed.length !== ex.words.length) return;
+    const isCorrect = placed.join("|") === ex.correct_order.join("|");
+    setCorrect(isCorrect);
+    setSubmitted(true);
+    setTimeout(() => onAnswer(isCorrect, placed.join(" ")), 500);
+  };
+
+  return (
+    <View style={styles.exerciseContainer}>
+      <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44" }]}>
+        <Text style={styles.arrangeEnglish}>{ex.english}</Text>
+        {ex.hint && <Text style={styles.arrangeHint}>💡 {ex.hint}</Text>}
+      </View>
+
+      {/* Answer zone */}
+      <View style={[styles.arrangeZone, submitted && (correct ? styles.arrangeCorrect : styles.arrangeWrong)]}>
+        {placed.length === 0 ? (
+          <Text style={styles.arrangePlaceholder}>Tap words to build the sentence</Text>
+        ) : (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {placed.map((w, i) => (
+              <TouchableOpacity key={i} onPress={() => removeWord(w, i)}
+                style={[styles.wordChip, { backgroundColor: lang.color }]} activeOpacity={0.7}>
+                <Text style={styles.wordChipText}>{w}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Word bank */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {bank.map((w, i) => (
+          <TouchableOpacity key={i} onPress={() => addWord(w, i)}
+            style={styles.wordBankChip} activeOpacity={0.7}>
+            <Text style={styles.wordBankChipText}>{w}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Submit button */}
+      {!submitted && placed.length === ex.words.length && (
+        <TouchableOpacity style={[styles.submitBtn, { backgroundColor: lang.color, borderBottomColor: lang.shadow }]}
+          onPress={submit} activeOpacity={0.85}>
+          <Text style={styles.submitBtnText}>CHECK</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -301,7 +418,7 @@ function FeedbackBar({ correct, funFact, onContinue, lang, correctAnswer }) {
 }
 
 /* ─── Result Screen ─────────────────────────────────────────────────────── */
-function ResultScreen({ lang, correct, total, xpEarned, onHome, onRetry }) {
+function ResultScreen({ lang, correct, total, xpEarned, onHome, onRetry, newAchievements }) {
   const pct = Math.round((correct / total) * 100);
   const perfect = correct === total;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
@@ -332,12 +449,27 @@ function ResultScreen({ lang, correct, total, xpEarned, onHome, onRetry }) {
         ))}
       </View>
 
+      {newAchievements && newAchievements.length > 0 && (
+        <View style={styles.achievementUnlock}>
+          <Text style={styles.achievementUnlockTitle}>🏅 Achievement Unlocked!</Text>
+          {newAchievements.map((a) => (
+            <View key={a.id} style={styles.achievementRow}>
+              <Text style={{ fontSize: 22 }}>{a.emoji}</Text>
+              <View>
+                <Text style={styles.achievementName}>{a.name}</Text>
+                <Text style={styles.achievementDesc}>{a.desc}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <View style={{ gap: 12, width: "100%" }}>
         <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: lang.color, borderBottomColor: lang.shadow }]} onPress={onRetry} activeOpacity={0.85}>
           <Text style={styles.primaryBtnText}>Practice Again</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryBtn} onPress={onHome} activeOpacity={0.85}>
-          <Text style={styles.secondaryBtnText}>Change Language</Text>
+          <Text style={styles.secondaryBtnText}>Back to Home</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -345,7 +477,7 @@ function ResultScreen({ lang, correct, total, xpEarned, onHome, onRetry }) {
 }
 
 /* ─── Loading Screen ────────────────────────────────────────────────────── */
-function LoadingScreen({ lang }) {
+function LoadingScreen({ lang, topic }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.loop(
@@ -355,6 +487,7 @@ function LoadingScreen({ lang }) {
       ])
     ).start();
   }, []);
+  const topicObj = TOPICS.find(t => t.id === topic);
 
   return (
     <SafeAreaView style={[styles.loadingScreen, { backgroundColor: lang.pale }]}>
@@ -362,19 +495,114 @@ function LoadingScreen({ lang }) {
       <Animated.Text style={[{ fontSize: 72 }, { transform: [{ scale: pulseAnim }] }]}>{lang.emoji}</Animated.Text>
       <Text style={styles.loadingTitle}>Building your lesson</Text>
       <Text style={[styles.loadingSubtitle, { color: lang.color }]}>{lang.name}</Text>
+      {topicObj && <Text style={styles.loadingTopic}>{topicObj.emoji} {topicObj.name}</Text>}
       <ActivityIndicator size="large" color={lang.color} style={{ marginTop: 16 }} />
     </SafeAreaView>
   );
 }
 
+/* ─── Topic Picker Screen ───────────────────────────────────────────────── */
+function TopicScreen({ lang, onSelect, onBack }) {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.topicHeader, { backgroundColor: lang.color }]}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={styles.topicHeaderTitle}>{lang.emoji} {lang.name}</Text>
+          <Text style={styles.topicHeaderSub}>Choose a topic</Text>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>
+        <TouchableOpacity style={styles.topicCardRandom} onPress={() => onSelect(null)} activeOpacity={0.8}>
+          <Text style={{ fontSize: 28 }}>🎲</Text>
+          <View style={{ flex: 1, marginLeft: 14 }}>
+            <Text style={styles.topicCardName}>Random Lesson</Text>
+            <Text style={styles.topicCardDesc}>Surprise me with mixed vocabulary</Text>
+          </View>
+          <Text style={[styles.langArrowText, { color: lang.color }]}>→</Text>
+        </TouchableOpacity>
+        {TOPICS.map((topic) => (
+          <TouchableOpacity key={topic.id} style={styles.topicCard} onPress={() => onSelect(topic.id)} activeOpacity={0.8}>
+            <Text style={{ fontSize: 26 }}>{topic.emoji}</Text>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={styles.topicCardName}>{topic.name}</Text>
+              <Text style={styles.topicCardDesc}>{topic.desc}</Text>
+            </View>
+            <Text style={[styles.langArrowText, { color: lang.color }]}>→</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+/* ─── Achievements Screen ───────────────────────────────────────────────── */
+function AchievementsScreen({ stats, onBack }) {
+  const unlocked = ACHIEVEMENTS.filter(a => a.check(stats));
+  const locked = ACHIEVEMENTS.filter(a => !a.check(stats));
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.achieveHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Text style={[styles.backBtnText, { color: "#3C3C3C" }]}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.achieveHeaderTitle}>🏅 Achievements</Text>
+        <Text style={styles.achieveHeaderCount}>{unlocked.length}/{ACHIEVEMENTS.length}</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        {unlocked.length > 0 && (
+          <>
+            <Text style={styles.achieveSectionLabel}>UNLOCKED</Text>
+            <View style={{ gap: 10, marginBottom: 24 }}>
+              {unlocked.map(a => (
+                <View key={a.id} style={[styles.achieveCard, styles.achieveCardUnlocked]}>
+                  <Text style={{ fontSize: 28 }}>{a.emoji}</Text>
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Text style={styles.achieveCardName}>{a.name}</Text>
+                    <Text style={styles.achieveCardDesc}>{a.desc}</Text>
+                  </View>
+                  <Text style={{ color: "#58CC02", fontSize: 18 }}>✓</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+        {locked.length > 0 && (
+          <>
+            <Text style={styles.achieveSectionLabel}>LOCKED</Text>
+            <View style={{ gap: 10 }}>
+              {locked.map(a => (
+                <View key={a.id} style={[styles.achieveCard, styles.achieveCardLocked]}>
+                  <Text style={{ fontSize: 28, opacity: 0.3 }}>{a.emoji}</Text>
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Text style={[styles.achieveCardName, { color: "#AFAFAF" }]}>{a.name}</Text>
+                    <Text style={styles.achieveCardDesc}>{a.desc}</Text>
+                  </View>
+                  <Text style={{ color: "#AFAFAF", fontSize: 18 }}>🔒</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* ─── Lesson Screen ─────────────────────────────────────────────────────── */
-function LessonScreen({ lang, exercises, onDone, onQuit }) {
+function LessonScreen({ lang, exercises, onComplete, onQuit }) {
   const [idx, setIdx] = useState(0);
   const [hearts, setHearts] = useState(HEARTS_MAX);
   const [xp, setXp] = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [correctCount, setCorrectCount] = useState(0);
-  const [done, setDone] = useState(false);
+  const [isPerfect, setIsPerfect] = useState(true);
 
   const ex = exercises[idx];
 
@@ -386,10 +614,13 @@ function LessonScreen({ lang, exercises, onDone, onQuit }) {
     } else {
       const newHearts = hearts - 1;
       setHearts(newHearts);
-      setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target });
-      if (newHearts <= 0) setTimeout(() => setDone(true), 1200);
+      setIsPerfect(false);
+      setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" ")) });
+      if (newHearts <= 0) {
+        setTimeout(() => onComplete({ correctCount, xp, isPerfect: false, outOfHearts: true }), 1200);
+      }
     }
-  }, [ex, hearts]);
+  }, [ex, hearts, correctCount, xp]);
 
   const handleMatchComplete = useCallback(() => {
     setXp(x => x + XP_PER_CORRECT);
@@ -399,26 +630,23 @@ function LessonScreen({ lang, exercises, onDone, onQuit }) {
 
   const handleContinue = () => {
     setFeedback(null);
-    if (idx + 1 >= exercises.length) { setDone(true); return; }
+    if (idx + 1 >= exercises.length) {
+      onComplete({ correctCount, xp, isPerfect });
+      return;
+    }
     setIdx(i => i + 1);
   };
-
-  if (done) {
-    return <ResultScreen lang={lang} correct={correctCount} total={exercises.length}
-      xpEarned={xp} onHome={onQuit} onRetry={() => onDone("retry")} />;
-  }
 
   const exerciseLabel = {
     mcq: ex.direction === "target_to_en" ? "What does this mean?" : "How do you say this?",
     fillblank: "Fill in the blank",
     match: "Match the pairs",
-  }[ex.type];
+    wordarrange: "Arrange the words",
+  }[ex.type] || "Complete the exercise";
 
   return (
     <SafeAreaView style={styles.lessonScreen}>
       <StatusBar barStyle="dark-content" />
-
-      {/* Top bar */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={onQuit} style={styles.quitBtn}>
           <Text style={styles.quitBtnText}>✕</Text>
@@ -429,23 +657,16 @@ function LessonScreen({ lang, exercises, onDone, onQuit }) {
         </View>
       </View>
 
-      {/* XP */}
       <View style={{ alignItems: "flex-end", paddingHorizontal: 20, marginBottom: 8 }}>
         <Text style={{ fontSize: 13, fontWeight: "800", color: "#FFD700" }}>⚡ {xp} XP</Text>
       </View>
 
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: feedback ? 200 : 24 }}>
         <Text style={styles.exerciseLabel}>{exerciseLabel}</Text>
-
-        {ex.type === "mcq" && (
-          <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />
-        )}
-        {ex.type === "fillblank" && (
-          <ExerciseFillBlank key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />
-        )}
-        {ex.type === "match" && (
-          <ExerciseMatch key={idx} ex={ex} lang={lang} onComplete={handleMatchComplete} />
-        )}
+        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
+        {ex.type === "fillblank" && <ExerciseFillBlank key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
+        {ex.type === "match" && <ExerciseMatch key={idx} ex={ex} lang={lang} onComplete={handleMatchComplete} />}
+        {ex.type === "wordarrange" && <ExerciseWordArrange key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
       </ScrollView>
 
       {feedback && (
@@ -456,8 +677,12 @@ function LessonScreen({ lang, exercises, onDone, onQuit }) {
   );
 }
 
+
 /* ─── Home Screen ───────────────────────────────────────────────────────── */
-function HomeScreen({ onSelect, stats }) {
+function HomeScreen({ onSelect, stats, onAchievements }) {
+  const dailyTip = CULTURAL_TIPS[new Date().getDate() % CULTURAL_TIPS.length];
+  const unlockedCount = ACHIEVEMENTS.filter(a => a.check(stats)).length;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <StatusBar barStyle="light-content" backgroundColor="#58CC02" />
@@ -466,7 +691,7 @@ function HomeScreen({ onSelect, stats }) {
         <View style={styles.homeHeader}>
           <Text style={styles.homeHeaderEyebrow}>THE SILK ROAD</Text>
           <Text style={styles.homeTitle}>Language Lab</Text>
-          <Text style={styles.homeSubtitle}>Three ancient languages, one modern method</Text>
+          <Text style={styles.homeSubtitle}>Five ancient languages, one modern method</Text>
         </View>
 
         {/* Stats */}
@@ -484,23 +709,39 @@ function HomeScreen({ onSelect, stats }) {
           ))}
         </View>
 
+        {/* Cultural tip of the day */}
+        <View style={styles.tipCard}>
+          <Text style={styles.tipLabel}>SILK ROAD FACT</Text>
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+            <Text style={{ fontSize: 26 }}>{dailyTip.emoji}</Text>
+            <Text style={styles.tipText}>{dailyTip.text}</Text>
+          </View>
+        </View>
+
+        {/* Achievements button */}
+        <TouchableOpacity style={styles.achieveBtn} onPress={onAchievements} activeOpacity={0.8}>
+          <Text style={{ fontSize: 22 }}>🏅</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.achieveBtnTitle}>Achievements</Text>
+            <Text style={styles.achieveBtnSub}>{unlockedCount} of {ACHIEVEMENTS.length} unlocked</Text>
+          </View>
+          <Text style={styles.langArrowText}>→</Text>
+        </TouchableOpacity>
+
         {/* Language cards */}
         <View style={{ padding: 20, gap: 14 }}>
           <Text style={styles.sectionLabel}>CHOOSE A LANGUAGE</Text>
           {LANGS.map((lang) => (
             <TouchableOpacity key={lang.id} style={styles.langCard} onPress={() => onSelect(lang)} activeOpacity={0.8}>
-              {/* Emoji icon */}
               <View style={[styles.langIcon, { backgroundColor: lang.pale }]}>
                 <Text style={{ fontSize: 30 }}>{lang.emoji}</Text>
               </View>
-              {/* Info */}
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
                   <Text style={styles.langName}>{lang.name}</Text>
                   <Text style={styles.langNative}>{lang.native}</Text>
                 </View>
                 <Text style={styles.langDesc}>{lang.desc}</Text>
-                {/* Progress mini */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
                   <View style={{ flex: 1, height: 5, backgroundColor: "#E5E5E5", borderRadius: 3, overflow: "hidden" }}>
                     <View style={{
@@ -512,7 +753,6 @@ function HomeScreen({ onSelect, stats }) {
                   <Text style={[styles.langXP, { color: lang.color }]}>{stats[lang.id + "_xp"] || 0} XP</Text>
                 </View>
               </View>
-              {/* Arrow */}
               <View style={[styles.langArrow, { backgroundColor: lang.pale }]}>
                 <Text style={[styles.langArrowText, { color: lang.color }]}>→</Text>
               </View>
@@ -530,14 +770,16 @@ function HomeScreen({ onSelect, stats }) {
 export default function App() {
   const [screen, setScreen] = useState("home");
   const [activeLang, setActiveLang] = useState(null);
+  const [activeTopic, setActiveTopic] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [error, setError] = useState(null);
-  const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0 });
+  const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
+  const [resultData, setResultData] = useState(null);
 
-  const startLesson = async (lang) => {
-    setActiveLang(lang); setScreen("loading"); setError(null);
+  const startLesson = async (lang, topicId) => {
+    setActiveLang(lang); setActiveTopic(topicId); setScreen("loading"); setError(null);
     try {
-      const exs = await fetchLesson(lang.id);
+      const exs = await fetchLesson(lang.id, topicId);
       if (!Array.isArray(exs) || exs.length === 0) throw new Error("empty");
       setExercises(exs);
       setScreen("lesson");
@@ -547,72 +789,112 @@ export default function App() {
     }
   };
 
-  const handleDone = (action) => {
-    setStats(s => ({
-      ...s, totalXP: s.totalXP + 50, lessons: s.lessons + 1,
-      streak: s.streak + (action === "retry" ? 0 : 1),
-      [activeLang.id + "_xp"]: (s[activeLang.id + "_xp"] || 0) + 50,
-    }));
-    if (action === "retry") startLesson(activeLang);
-    else setScreen("home");
-  };
+  const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect }) => {
+    const newStats = {
+      ...stats,
+      totalXP: stats.totalXP + xp,
+      lessons: stats.lessons + 1,
+      perfectLessons: stats.perfectLessons + (isPerfect ? 1 : 0),
+      streak: stats.streak + 1,
+      [activeLang.id + "_xp"]: (stats[activeLang.id + "_xp"] || 0) + xp,
+    };
+    const prevUnlocked = new Set(ACHIEVEMENTS.filter(a => a.check(stats)).map(a => a.id));
+    const newAchievements = ACHIEVEMENTS.filter(a => a.check(newStats) && !prevUnlocked.has(a.id));
+    setStats(newStats);
+    setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
+    setScreen("result");
+  }, [stats, activeLang, exercises]);
 
   return (
     <SafeAreaProvider>
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-      {screen === "home" && <HomeScreen onSelect={startLesson} stats={stats} />}
-      {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} />}
-      {screen === "lesson" && activeLang && exercises.length > 0 && (
-        <LessonScreen lang={activeLang} exercises={exercises} onDone={handleDone} onQuit={() => setScreen("home")} />
-      )}
-    </View>
+      <View style={{ flex: 1, backgroundColor: "#fff" }}>
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+        {screen === "home" && (
+          <HomeScreen
+            onSelect={(lang) => { setActiveLang(lang); setScreen("topic"); }}
+            stats={stats}
+            onAchievements={() => setScreen("achievements")}
+          />
+        )}
+        {screen === "topic" && activeLang && (
+          <TopicScreen lang={activeLang} onSelect={(topicId) => startLesson(activeLang, topicId)}
+            onBack={() => setScreen("home")} />
+        )}
+        {screen === "achievements" && (
+          <AchievementsScreen stats={stats} onBack={() => setScreen("home")} />
+        )}
+        {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
+        {screen === "lesson" && activeLang && exercises.length > 0 && (
+          <LessonScreen lang={activeLang} exercises={exercises}
+            onComplete={handleLessonComplete} onQuit={() => setScreen("home")} />
+        )}
+        {screen === "result" && activeLang && resultData && (
+          <ResultScreen
+            lang={activeLang}
+            correct={resultData.correctCount}
+            total={resultData.total}
+            xpEarned={resultData.xpEarned}
+            newAchievements={resultData.newAchievements}
+            onRetry={() => startLesson(activeLang, activeTopic)}
+            onHome={() => setScreen("home")}
+          />
+        )}
+      </View>
     </SafeAreaProvider>
   );
 }
 
 /* ─── Styles ────────────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  // Lesson
   lessonScreen: { flex: 1, backgroundColor: "#fff" },
   topBar: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, paddingTop: 8 },
   quitBtn: { padding: 8 },
   quitBtnText: { fontSize: 18, color: "#AFAFAF", fontWeight: "800" },
   exerciseLabel: { fontSize: 20, fontWeight: "800", color: "#3C3C3C", paddingHorizontal: 20, marginBottom: 20 },
 
-  // Exercise
   exerciseContainer: { paddingHorizontal: 20, gap: 16 },
   promptCard: { borderRadius: 20, padding: 28, alignItems: "center", borderWidth: 2 },
   promptWord: { fontWeight: "900", color: "#3C3C3C", textAlign: "center" },
   promptRomanized: { fontSize: 15, color: "#AFAFAF", marginTop: 6, fontStyle: "italic" },
 
-  // Options
-  optionBtn: {
-    padding: 16, borderRadius: 16, borderWidth: 2,
-    borderColor: "#E5E5E5", backgroundColor: "#fff",
-  },
+  optionBtn: { padding: 16, borderRadius: 16, borderWidth: 2, borderColor: "#E5E5E5", backgroundColor: "#fff" },
   optionCorrect: { borderColor: "#58CC02", backgroundColor: "#D7FFB8" },
   optionWrong: { borderColor: "#FF4B4B", backgroundColor: "#FFD0D0" },
   optionText: { fontSize: 16, fontWeight: "700", color: "#3C3C3C" },
 
-  // Fill blank
   fillText: { fontSize: 20, fontWeight: "700", color: "#3C3C3C", textAlign: "center", lineHeight: 34 },
   fillBlank: { fontWeight: "900", textDecorationLine: "underline" },
 
-  // Match
-  matchTile: {
-    padding: 14, borderRadius: 14, borderWidth: 2,
-    borderColor: "#E5E5E5", backgroundColor: "#fff", alignItems: "center",
-  },
+  matchTile: { padding: 14, borderRadius: 14, borderWidth: 2, borderColor: "#E5E5E5", backgroundColor: "#fff", alignItems: "center" },
   matchText: { fontSize: 14, fontWeight: "700", color: "#3C3C3C", textAlign: "center" },
   matchMatched: { borderColor: "#E5E5E5", backgroundColor: "#F7F7F7", opacity: 0.4 },
   matchWrong: { borderColor: "#FF4B4B", backgroundColor: "#FFD0D0" },
 
-  // Feedback
+  // Word arrange
+  arrangeEnglish: { fontSize: 22, fontWeight: "800", color: "#3C3C3C", textAlign: "center", marginBottom: 6 },
+  arrangeHint: { fontSize: 13, color: "#AFAFAF", fontWeight: "600", textAlign: "center", marginTop: 4 },
+  arrangeZone: {
+    minHeight: 64, borderRadius: 16, borderWidth: 2, borderColor: "#E5E5E5",
+    backgroundColor: "#FAFAFA", padding: 12, justifyContent: "center",
+  },
+  arrangeCorrect: { borderColor: "#58CC02", backgroundColor: "#D7FFB8" },
+  arrangeWrong: { borderColor: "#FF4B4B", backgroundColor: "#FFD0D0" },
+  arrangePlaceholder: { color: "#AFAFAF", fontWeight: "600", textAlign: "center" },
+  wordChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  wordChipText: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  wordBankChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
+    borderWidth: 2, borderColor: "#E5E5E5", backgroundColor: "#fff",
+    borderBottomWidth: 3, borderBottomColor: "#E5E5E5",
+  },
+  wordBankChipText: { color: "#3C3C3C", fontWeight: "700", fontSize: 15 },
+  submitBtn: { padding: 14, borderRadius: 14, alignItems: "center", borderBottomWidth: 4, marginTop: 4 },
+  submitBtnText: { color: "#fff", fontSize: 16, fontWeight: "900", letterSpacing: 0.5 },
+
   feedbackBar: {
     position: "absolute", bottom: 0, left: 0, right: 0,
     padding: 20, paddingBottom: Platform.OS === "ios" ? 36 : 24,
@@ -621,66 +903,81 @@ const styles = StyleSheet.create({
   feedbackTitle: { fontSize: 18, fontWeight: "900" },
   feedbackAnswer: { fontSize: 16, fontWeight: "700", color: "#3C3C3C", marginTop: 2 },
   funFact: { fontSize: 13, color: "#3C3C3C", opacity: 0.75, marginBottom: 12, lineHeight: 18 },
-  continueBtn: {
-    padding: 16, borderRadius: 16, alignItems: "center",
-    borderBottomWidth: 4,
-  },
+  continueBtn: { padding: 16, borderRadius: 16, alignItems: "center", borderBottomWidth: 4 },
   continueBtnText: { color: "#fff", fontSize: 17, fontWeight: "900", letterSpacing: 0.5 },
 
-  // Result
-  resultScreen: {
-    flex: 1, backgroundColor: "#fff", alignItems: "center",
-    justifyContent: "center", padding: 24, gap: 24,
-  },
+  resultScreen: { flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 24, gap: 20 },
   resultTitle: { fontSize: 32, fontWeight: "900", color: "#3C3C3C", marginTop: 8 },
   resultSubtitle: { fontSize: 16, color: "#AFAFAF", fontWeight: "700" },
   statsRow: { flexDirection: "row", gap: 12 },
-  statCard: {
-    flex: 1, backgroundColor: "#F7F7F7", borderRadius: 16,
-    padding: 16, alignItems: "center", borderWidth: 2, borderColor: "#E5E5E5",
-  },
+  statCard: { flex: 1, backgroundColor: "#F7F7F7", borderRadius: 16, padding: 16, alignItems: "center", borderWidth: 2, borderColor: "#E5E5E5" },
   statValue: { fontSize: 22, fontWeight: "900", marginTop: 4 },
   statLabel: { fontSize: 11, fontWeight: "700", color: "#AFAFAF", marginTop: 2 },
   primaryBtn: { padding: 16, borderRadius: 16, alignItems: "center", borderBottomWidth: 4 },
   primaryBtnText: { color: "#fff", fontSize: 17, fontWeight: "900" },
-  secondaryBtn: {
-    padding: 16, borderRadius: 16, alignItems: "center",
-    borderWidth: 2, borderColor: "#E5E5E5", borderBottomWidth: 4, borderBottomColor: "#E5E5E5",
-  },
+  secondaryBtn: { padding: 16, borderRadius: 16, alignItems: "center", borderWidth: 2, borderColor: "#E5E5E5", borderBottomWidth: 4, borderBottomColor: "#E5E5E5" },
   secondaryBtnText: { color: "#AFAFAF", fontSize: 17, fontWeight: "900" },
 
-  // Loading
+  achievementUnlock: { width: "100%", backgroundColor: "#FFF8E1", borderRadius: 16, padding: 16, borderWidth: 2, borderColor: "#FFD700" },
+  achievementUnlockTitle: { fontSize: 15, fontWeight: "900", color: "#856300", marginBottom: 10 },
+  achievementRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
+  achievementName: { fontSize: 14, fontWeight: "800", color: "#3C3C3C" },
+  achievementDesc: { fontSize: 12, color: "#AFAFAF", fontWeight: "600" },
+
   loadingScreen: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingTitle: { fontSize: 22, fontWeight: "900", color: "#3C3C3C" },
   loadingSubtitle: { fontSize: 16, fontWeight: "700" },
+  loadingTopic: { fontSize: 14, color: "#AFAFAF", fontWeight: "700" },
 
-  // Home
   homeHeader: { backgroundColor: "#58CC02", padding: 28, paddingTop: 20, alignItems: "center" },
   homeHeaderEyebrow: { color: "rgba(255,255,255,0.8)", fontWeight: "900", letterSpacing: 2, fontSize: 12, marginBottom: 6 },
   homeTitle: { color: "#fff", fontSize: 34, fontWeight: "900", letterSpacing: -0.5 },
   homeSubtitle: { color: "rgba(255,255,255,0.8)", fontWeight: "700", marginTop: 4, fontSize: 14 },
-  statsBar: {
-    flexDirection: "row", padding: 16,
-    borderBottomWidth: 2, borderBottomColor: "#E5E5E5",
-  },
+  statsBar: { flexDirection: "row", padding: 16, borderBottomWidth: 2, borderBottomColor: "#E5E5E5" },
   statBarValue: { fontSize: 18, fontWeight: "900", color: "#3C3C3C" },
   statBarLabel: { fontSize: 11, fontWeight: "700", color: "#AFAFAF" },
+
+  tipCard: { margin: 16, marginTop: 14, backgroundColor: "#FFFBEA", borderRadius: 16, padding: 16, borderWidth: 2, borderColor: "#FFE066" },
+  tipLabel: { fontSize: 10, fontWeight: "900", color: "#C8960C", letterSpacing: 1.5, marginBottom: 8 },
+  tipText: { fontSize: 13, color: "#5C4A00", lineHeight: 20, fontWeight: "600", flex: 1 },
+
+  achieveBtn: { marginHorizontal: 16, marginBottom: 4, flexDirection: "row", alignItems: "center", backgroundColor: "#F7F7F7", borderRadius: 16, padding: 16, borderWidth: 2, borderColor: "#E5E5E5" },
+  achieveBtnTitle: { fontSize: 16, fontWeight: "800", color: "#3C3C3C" },
+  achieveBtnSub: { fontSize: 12, color: "#AFAFAF", fontWeight: "600", marginTop: 2 },
+
   sectionLabel: { fontSize: 13, fontWeight: "800", color: "#AFAFAF", letterSpacing: 1, marginBottom: 4 },
-  langCard: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    backgroundColor: "#fff", borderWidth: 2, borderColor: "#E5E5E5",
-    borderBottomWidth: 4, borderBottomColor: "#E5E5E5", borderRadius: 20, padding: 18,
-  },
+  langCard: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: "#fff", borderWidth: 2, borderColor: "#E5E5E5", borderBottomWidth: 4, borderBottomColor: "#E5E5E5", borderRadius: 20, padding: 18 },
   langIcon: { width: 60, height: 60, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   langName: { fontSize: 18, fontWeight: "900", color: "#3C3C3C" },
   langNative: { fontSize: 13, color: "#AFAFAF", fontWeight: "700" },
   langDesc: { fontSize: 12, color: "#AFAFAF", fontWeight: "700" },
   langXP: { fontSize: 12, fontWeight: "800" },
   langArrow: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  langArrowText: { fontSize: 18, fontWeight: "900" },
+  langArrowText: { fontSize: 18, fontWeight: "900", color: "#AFAFAF" },
   footer: { textAlign: "center", padding: 20, color: "#AFAFAF", fontSize: 11, fontWeight: "700" },
 
-  // Error
+  // Topic screen
+  topicHeader: { flexDirection: "row", alignItems: "center", padding: 16, paddingTop: 12 },
+  topicHeaderTitle: { fontSize: 20, fontWeight: "900", color: "#fff" },
+  topicHeaderSub: { fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: "600" },
+  topicCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderWidth: 2, borderColor: "#E5E5E5", borderBottomWidth: 4, borderBottomColor: "#E5E5E5", borderRadius: 16, padding: 16 },
+  topicCardRandom: { flexDirection: "row", alignItems: "center", backgroundColor: "#F7F7F7", borderWidth: 2, borderColor: "#E5E5E5", borderBottomWidth: 4, borderBottomColor: "#E5E5E5", borderRadius: 16, padding: 16 },
+  topicCardName: { fontSize: 16, fontWeight: "800", color: "#3C3C3C" },
+  topicCardDesc: { fontSize: 12, color: "#AFAFAF", fontWeight: "600", marginTop: 2 },
+  backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  backBtnText: { fontSize: 22, fontWeight: "800", color: "#fff" },
+
+  // Achievements screen
+  achieveHeader: { flexDirection: "row", alignItems: "center", padding: 16, paddingTop: 12, borderBottomWidth: 2, borderBottomColor: "#E5E5E5" },
+  achieveHeaderTitle: { flex: 1, fontSize: 20, fontWeight: "900", color: "#3C3C3C", textAlign: "center" },
+  achieveHeaderCount: { fontSize: 14, fontWeight: "800", color: "#AFAFAF" },
+  achieveSectionLabel: { fontSize: 11, fontWeight: "900", color: "#AFAFAF", letterSpacing: 1.5, marginBottom: 10 },
+  achieveCard: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 14, borderWidth: 2 },
+  achieveCardUnlocked: { backgroundColor: "#F0FDE8", borderColor: "#58CC02" },
+  achieveCardLocked: { backgroundColor: "#F7F7F7", borderColor: "#E5E5E5" },
+  achieveCardName: { fontSize: 15, fontWeight: "800", color: "#3C3C3C" },
+  achieveCardDesc: { fontSize: 12, color: "#AFAFAF", fontWeight: "600", marginTop: 2 },
+
   errorBanner: {
     position: "absolute", top: 50, left: 20, right: 20, zIndex: 999,
     backgroundColor: "#FFD0D0", borderWidth: 2, borderColor: "#FF4B4B",
