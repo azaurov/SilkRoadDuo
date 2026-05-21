@@ -94,12 +94,12 @@ const CULTURAL_TIPS = [
 /* ─── AI Helpers ────────────────────────────────────────────────────────── */
 function buildPrompt(langId, topicId) {
   const names = {
-    bukharian: "Bukharian (Bukhori/Judeo-Tajik)",
+    bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
     farsi: "Farsi (Persian)",
     sogdian: "Sogdian (ancient Silk Road language, use romanized transcription)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
-    hebrew: "Hebrew (use both Hebrew script and romanized transliteration)",
+    hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
     aramaic: "Aramaic (Classical/Syriac, use romanized transliteration)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
