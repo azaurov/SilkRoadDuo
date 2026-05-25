@@ -1,2 +1,7 @@
 node_modules
 .expo/
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.*.local
