@@ -8,7 +8,7 @@ import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const API = "https://api.groq.com/openai/v1/chat/completions";
-const API_KEY = "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";
+const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
 
