@@ -5,6 +5,7 @@ import {
   Platform, Dimensions,
 } from "react-native";
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
+import { useFonts } from "expo-font";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const API = "https://api.groq.com/openai/v1/chat/completions";
@@ -96,7 +97,7 @@ function buildPrompt(langId, topicId) {
   const names = {
     bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
     farsi: "Farsi (Persian)",
-    sogdian: "Sogdian (ancient Silk Road language — IMPORTANT: use ONLY Latin/romanized transcription for ALL fields including word_native. Do NOT use ancient Sogdian Unicode script or any non-Latin characters. word_native must equal word)",
+    sogdian: "Sogdian (ancient Silk Road language, use Sogdian script U+10F30–U+10F6F for word_native, romanized transcription for word)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
     hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
@@ -145,10 +146,6 @@ async function fetchLesson(langId, topicId) {
     if (ex.type === "fillblank" && ex.options) {
       const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct_target || "").trim().toLowerCase());
       if (match) ex.correct_target = match;
-    }
-    // Sogdian: fall back to romanized if AI returned non-Latin word_native (ancient script won't render on device)
-    if (langId === "sogdian" && ex.word_native && /[^\x00-ɏ]/.test(ex.word_native)) {
-      ex.word_native = ex.word;
     }
     return ex;
   });
@@ -200,7 +197,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
   return (
     <View style={styles.exerciseContainer}>
       <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44" }]}>
-        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }]}>
+        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: "NotoSansSogdian" }]}>
           {isNative ? (ex.word_native || ex.word) : ex.english}
         </Text>
         {isNative && ex.word_native && ex.word !== ex.word_native && (
@@ -795,6 +792,10 @@ function HomeScreen({ onSelect, stats, onAchievements }) {
 
 /* ─── App Root ──────────────────────────────────────────────────────────── */
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    NotoSansSogdian: require("./assets/fonts/NotoSansSogdian-Regular.ttf"),
+  });
+
   const [screen, setScreen] = useState("home");
   const [activeLang, setActiveLang] = useState(null);
   const [activeTopic, setActiveTopic] = useState(null);
@@ -831,6 +832,8 @@ export default function App() {
     setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
     setScreen("result");
   }, [stats, activeLang, exercises]);
+
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaProvider>
