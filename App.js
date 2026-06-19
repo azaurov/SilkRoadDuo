@@ -96,7 +96,7 @@ function buildPrompt(langId, topicId) {
   const names = {
     bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
     farsi: "Farsi (Persian)",
-    sogdian: "Sogdian (ancient Silk Road language, use romanized transcription)",
+    sogdian: "Sogdian (ancient Silk Road language — IMPORTANT: use ONLY Latin/romanized transcription for ALL fields including word_native. Do NOT use ancient Sogdian Unicode script or any non-Latin characters. word_native must equal word)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
     hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
@@ -145,6 +145,10 @@ async function fetchLesson(langId, topicId) {
     if (ex.type === "fillblank" && ex.options) {
       const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct_target || "").trim().toLowerCase());
       if (match) ex.correct_target = match;
+    }
+    // Sogdian: fall back to romanized if AI returned non-Latin word_native (ancient script won't render on device)
+    if (langId === "sogdian" && ex.word_native && /[^\x00-ɏ]/.test(ex.word_native)) {
+      ex.word_native = ex.word;
     }
     return ex;
   });
@@ -1008,3 +1012,4 @@ const styles = StyleSheet.create({
   },
   errorText: { color: "#8B0000", fontWeight: "700", textAlign: "center", fontSize: 13 },
 });
+
