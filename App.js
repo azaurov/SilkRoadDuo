@@ -135,7 +135,19 @@ async function fetchLesson(langId, topicId) {
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const text = d.choices?.[0]?.message?.content || "[]";
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  const exercises = JSON.parse(text.replace(/```json|```/g, "").trim());
+  // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace drift)
+  return exercises.map(ex => {
+    if (ex.type === "mcq" && ex.options) {
+      const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct || "").trim().toLowerCase());
+      if (match) ex.correct = match;
+    }
+    if (ex.type === "fillblank" && ex.options) {
+      const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct_target || "").trim().toLowerCase());
+      if (match) ex.correct_target = match;
+    }
+    return ex;
+  });
 }
 
 /* ─── Animated Heart ────────────────────────────────────────────────────── */
