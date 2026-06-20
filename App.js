@@ -5,6 +5,7 @@ import {
   Platform, Dimensions,
 } from "react-native";
 import * as Speech from "expo-speech";
+import { Audio } from "expo-av";
 import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
@@ -877,6 +878,19 @@ export default function App() {
   const [resultData, setResultData] = useState(null);
   const [availableTtsLocales, setAvailableTtsLocales] = useState(new Set());
   const prefetchedLesson = useRef(null);
+  const themeSoundRef = useRef(null);
+
+  useEffect(() => {
+    let sound;
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).then(() =>
+      Audio.Sound.createAsync(require("./assets/prince_of_persia.mp3"), { isLooping: true, volume: 0.5 })
+    ).then(({ sound: s }) => {
+      sound = s;
+      themeSoundRef.current = s;
+      s.playAsync();
+    }).catch(() => {});
+    return () => { sound?.unloadAsync(); };
+  }, []);
 
   // Android TTS engine initialises asynchronously — retry until voices populate
   useEffect(() => {
@@ -901,7 +915,11 @@ export default function App() {
       .catch(() => {});
   };
 
+  const stopTheme = () => themeSoundRef.current?.pauseAsync().catch(() => {});
+  const resumeTheme = () => themeSoundRef.current?.playAsync().catch(() => {});
+
   const startLesson = async (lang, topicId) => {
+    stopTheme();
     setActiveLang(lang); setActiveTopic(topicId); setError(null);
     const cached = prefetchedLesson.current;
     if (cached && cached.langId === lang.id && cached.topicId === topicId) {
@@ -967,7 +985,7 @@ export default function App() {
         {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
         {screen === "lesson" && activeLang && exercises.length > 0 && (
           <LessonScreen lang={activeLang} exercises={exercises}
-            onComplete={handleLessonComplete} onQuit={() => setScreen("home")}
+            onComplete={handleLessonComplete} onQuit={() => { setScreen("home"); resumeTheme(); }}
             availableTtsLocales={availableTtsLocales} />
         )}
         {screen === "result" && activeLang && resultData && (
@@ -978,7 +996,7 @@ export default function App() {
             xpEarned={resultData.xpEarned}
             newAchievements={resultData.newAchievements}
             onRetry={() => startLesson(activeLang, activeTopic)}
-            onHome={() => setScreen("home")}
+            onHome={() => { setScreen("home"); resumeTheme(); }}
           />
         )}
       </View>
