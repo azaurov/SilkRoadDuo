@@ -4,13 +4,19 @@
     "slug": "silk-road-duo",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.silkroadduo.app"
+      "bundleIdentifier": "com.silkroadduo.app",
+      "icon": "./assets/icon.png"
     },
     "android": {
-      "package": "com.silkroadduo.app"
+      "package": "com.silkroadduo.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F5ECD7"
+      }
     },
     "extra": {
       "eas": {
