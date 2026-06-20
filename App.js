@@ -241,7 +241,12 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
 
   const speak = () => {
     Speech.stop();
-    Speech.speak(ttsWord, ttsLocale ? { language: ttsLocale } : {});
+    if (ttsLocale) {
+      // Try native-script voice; fall back to romanized if locale voice not installed
+      Speech.speak(ttsWord, { language: ttsLocale, onError: () => Speech.speak(ex.word, {}) });
+    } else {
+      Speech.speak(ex.word, {});
+    }
   };
 
   const optStyle = (opt) => {
