@@ -114,7 +114,7 @@ function buildPrompt(langId, topicId) {
   const names = {
     bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
     farsi: "Farsi (Persian)",
-    sogdian: "Sogdian (ancient Silk Road language, use Sogdian script U+10F30–U+10F6F for word_native, romanized transcription for word)",
+    sogdian: "Sogdian (ancient Silk Road language, romanized transliteration only for both word and word_native)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
     hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
@@ -158,6 +158,10 @@ async function fetchLesson(langId, topicId) {
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const text = d.choices?.[0]?.message?.content || "[]";
   const exercises = JSON.parse(text.replace(/```json|```/g, "").trim());
+  // Sogdian ancient script cannot be shaped by Android's HarfBuzz; use romanized only
+  if (langId === "sogdian") {
+    exercises.forEach(ex => { delete ex.word_native; });
+  }
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace drift)
   return exercises.map(ex => {
     if (ex.type === "mcq" && ex.options) {
@@ -191,6 +195,16 @@ function ProgressBar({ current, total, color }) {
   );
 }
 
+// Detect which bundled font covers the script characters (Sogdian U+10F30-U+10F6F vs Old Uyghur U+10F70-U+10FAF)
+function sogdianFont(text = "") {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0x10F70 && cp <= 0x10FAF) return "NotoSansOldUyghur";
+    if (cp >= 0x10F00 && cp <= 0x10F6F) return "NotoSansSogdian";
+  }
+  return "NotoSansSogdian";
+}
+
 /* ─── MCQ Exercise ──────────────────────────────────────────────────────── */
 function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
   const [selected, setSelected] = useState(null);
@@ -218,7 +232,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
   return (
     <View style={styles.exerciseContainer}>
       <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44" }]}>
-        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: "NotoSansSogdian" }]}>
+        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: sogdianFont(ex.word_native || ex.word) }]}>
           {isNative ? (ex.word_native || ex.word) : ex.english}
         </Text>
         {isNative && ex.word_native && ex.word !== ex.word_native && (
@@ -815,6 +829,7 @@ function HomeScreen({ onSelect, stats, onAchievements }) {
 export default function App() {
   const [fontsLoaded] = useFonts({
     NotoSansSogdian: require("./assets/fonts/NotoSansSogdian-Regular.ttf"),
+    NotoSansOldUyghur: require("./assets/fonts/NotoSansOldUyghur-Regular.ttf"),
   });
 
   const [screen, setScreen] = useState("home");
