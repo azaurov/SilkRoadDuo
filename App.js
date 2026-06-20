@@ -152,10 +152,14 @@ function backendRequest(backend, prompt) {
 
 async function fetchLesson(langId, topicId) {
   const prompt = buildPrompt(langId, topicId);
-  let r = await backendRequest(BACKEND, prompt);
-  // Auto-fallback to OpenRouter on Groq rate-limit
-  if (r.status === 429 && BACKEND === "groq") {
-    r = await backendRequest("openrouter", prompt);
+  // Fallback chain on 429: try each backend in order until one succeeds
+  const chain = BACKEND === "groq"       ? ["groq", "openrouter", "gemini"] :
+                BACKEND === "openrouter" ? ["openrouter", "gemini"] :
+                [BACKEND];
+  let r;
+  for (const backend of chain) {
+    r = await backendRequest(backend, prompt);
+    if (r.status !== 429) break;
   }
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
