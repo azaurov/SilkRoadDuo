@@ -253,7 +253,8 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
 /* ─── Fill in the Blank ─────────────────────────────────────────────────── */
 function ExerciseFillBlank({ ex, lang, onAnswer, disabled }) {
   const [selected, setSelected] = useState(null);
-  const parts = ex.template.split("___");
+  const rawParts = ex.template.split("___");
+  const parts = rawParts.length >= 2 ? rawParts : [ex.template, ""];
 
   const handle = (opt) => {
     if (disabled || selected) return;
@@ -819,7 +820,7 @@ function HomeScreen({ onSelect, stats, onAchievements }) {
           ))}
         </View>
 
-        <Text style={styles.footer}>Powered by Claude AI · Fresh content each lesson</Text>
+        <Text style={styles.footer}>Powered by AI · Fresh content each lesson</Text>
       </ScrollView>
     </SafeAreaView>
   );
