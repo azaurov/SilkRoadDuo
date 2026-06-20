@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # sentinel.py — Autonomous test-and-fix runner for SilkRoadDuo
-# Usage: python3 scripts/sentinel.py [--loops 3] [--lang sogdian] [--topic greetings] [--no-fix]
+# Usage: python3 scripts/sentinel.py [--loops 3] [--lang sogdian] [--topic greetings] [--no-fix] [--no-release]
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -198,12 +199,42 @@ def run_test_loop(loops, no_fix):
     return passed, failed
 
 
+def create_github_release():
+    version = json.loads((APP_DIR / "package.json").read_text())["version"]
+    tag = f"v{version}"
+
+    # Skip if release already exists
+    r = run(["gh", "release", "view", tag], cwd=str(APP_DIR))
+    if r.returncode == 0:
+        log(f"  Release {tag} already exists — skipping")
+        return
+
+    # Create annotated tag (ignore error if it already exists locally)
+    run(["git", "-C", str(APP_DIR), "tag", "-a", tag, "-m", f"Release {tag}"])
+    push = run(["git", "-C", str(APP_DIR), "push", "origin", tag])
+    if push.returncode != 0:
+        log(f"  Tag push failed: {push.stderr.strip()}")
+
+    sha = run(["git", "-C", str(APP_DIR), "rev-parse", "--short", "HEAD"]).stdout.strip()
+    notes = f"Sentinel: {tag} — all tests passed ✓\n\nCommit: {sha}"
+    r = run(["gh", "release", "create", tag,
+             "--title", tag,
+             "--notes", notes,
+             "--target", "master"],
+            cwd=str(APP_DIR))
+    if r.returncode == 0:
+        log(f"  GitHub release {tag} created")
+    else:
+        log(f"  Release creation failed: {r.stderr.strip()}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SilkRoadDuo emulator test loop")
-    parser.add_argument("--loops",  type=int, default=3,          help="Number of test loops")
-    parser.add_argument("--lang",   default="sogdian",            help="Language id")
-    parser.add_argument("--topic",  default="greetings",          help="Topic id")
-    parser.add_argument("--no-fix", action="store_true",          help="Skip auto-fix attempts")
+    parser.add_argument("--loops",      type=int, default=3,     help="Number of test loops")
+    parser.add_argument("--lang",       default="sogdian",       help="Language id")
+    parser.add_argument("--topic",      default="greetings",     help="Topic id")
+    parser.add_argument("--no-fix",     action="store_true",     help="Skip auto-fix attempts")
+    parser.add_argument("--no-release", action="store_true",     help="Skip GitHub release creation")
     args = parser.parse_args()
 
     log(f"Sentinel starting — {args.loops} loop(s), lang={args.lang}, topic={args.topic}")
@@ -211,6 +242,11 @@ def main():
 
     log("")
     log(f"=== RESULTS: {passed}/{args.loops} passed, {failed} failed ===")
+
+    if failed == 0 and not args.no_release:
+        log("All tests passed — creating GitHub release...")
+        create_github_release()
+
     sys.exit(1 if failed > 0 else 0)
 
 
