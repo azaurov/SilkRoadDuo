@@ -5,3 +5,6 @@ node_modules
 .env
 .env.local
 .env.*.local
+
+# Sentinel logs
+scripts/sentinel.log
