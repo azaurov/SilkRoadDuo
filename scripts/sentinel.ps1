@@ -9,11 +9,12 @@ param(
     [switch]$NoFix
 )
 
-$adb     = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-$AppUrl  = "exp://10.0.0.208:8081"
-$TmpDir  = "$env:TEMP\sentinel"
-$AppDir  = $PSScriptRoot | Split-Path -Parent
-$LogFile = "$AppDir\scripts\sentinel.log"
+$adb    = if (Get-Command adb -ErrorAction SilentlyContinue) { "adb" }
+          else { "$env:HOME/Android/Sdk/platform-tools/adb" }
+$AppUrl = "exp://10.0.2.2:8081"
+$TmpDir = "/tmp/sentinel"
+$AppDir = $PSScriptRoot | Split-Path -Parent
+$LogFile = "$AppDir/scripts/sentinel.log"
 
 New-Item -ItemType Directory -Force $TmpDir | Out-Null
 
@@ -30,8 +31,8 @@ function EmulatorOnline() {
 }
 
 function Screenshot($name) {
-    $raw    = "$TmpDir\$name.png"
-    $scaled = "$TmpDir\${name}_s.png"
+    $raw    = "$TmpDir/$name.png"
+    $scaled = "$TmpDir/${name}_s.png"
 
     if (-not (EmulatorOnline)) {
         Log "  [screenshot] emulator offline, skipping $name"
@@ -46,19 +47,12 @@ function Screenshot($name) {
         return $null
     }
 
-    try {
-        Add-Type -AssemblyName System.Drawing
-        $img = [System.Drawing.Image]::FromFile($raw)
-        $bmp = New-Object System.Drawing.Bitmap(540, 1212)
-        $g   = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.DrawImage($img, 0, 0, 540, 1212)
-        $bmp.Save($scaled)
-        $g.Dispose(); $img.Dispose(); $bmp.Dispose()
-        return $scaled
-    } catch {
-        Log "  [screenshot] resize failed: $_, using raw"
-        return $raw
+    # Use ImageMagick if available, otherwise use raw screenshot
+    if (Get-Command convert -ErrorAction SilentlyContinue) {
+        & convert $raw -resize 540x1212! $scaled 2>$null
+        if (Test-Path $scaled) { return $scaled }
     }
+    return $raw
 }
 
 function Tap($x, $y) {
@@ -96,7 +90,6 @@ function WaitForEmulator($timeoutSec = 60) {
     $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline) {
         if (EmulatorOnline) {
-            # Also wait for Android input service to be ready
             $boot = & $adb -s emulator-5554 shell getprop sys.boot_completed 2>$null
             if ($boot -match "1") { Log "  Emulator online and boot complete."; return $true }
         }
@@ -106,11 +99,16 @@ function WaitForEmulator($timeoutSec = 60) {
     return $false
 }
 
+function MetroRunning() {
+    $result = bash -c "ss -tlnp 2>/dev/null | grep ':8081'" 2>$null
+    return (-not [string]::IsNullOrEmpty($result))
+}
+
 function EnsureMetroRunning() {
-    $conn = Get-NetTCPConnection -LocalPort 8081 -EA SilentlyContinue
-    if ($conn) { return }
+    if (MetroRunning) { return }
     Log "Metro not running on :8081 — starting it..."
-    Start-Process pwsh -ArgumentList "-NoExit", "-Command", "Set-Location '$AppDir'; npx expo start --android" -WindowStyle Normal
+    $logPath = "$TmpDir/metro.log"
+    bash -c "cd '$AppDir' && nohup npx expo start --android > '$logPath' 2>&1 &" 2>$null
     Log "  Waiting 25s for Metro to bundle..."
     Start-Sleep 25
 }
@@ -158,17 +156,7 @@ function RunTestLoop() {
             foreach ($issue in $issues) {
                 switch ($issue) {
                     "LOADING_TIMEOUT" {
-                        # Soft fix: reload the JS bundle without restarting Metro
-                        # (Metro restart can take the emulator offline)
-                        Log "  → Sending reload keystroke (r) to Metro..."
-                        $metroProc = Get-Process -Name "node" -EA SilentlyContinue | Where-Object {
-                            $_.CommandLine -like "*expo*"
-                        } | Select-Object -First 1
-                        if ($metroProc) {
-                            # Press 'r' in the Metro terminal to trigger a reload
-                            [console]::OpenStandardInput() | Out-Null  # no-op, Metro runs in separate window
-                        }
-                        # Instead: use adb to send 'r' to trigger dev menu reload
+                        Log "  → Sending reload via adb dev menu..."
                         & $adb -s emulator-5554 shell input keyevent 82 2>$null  # open dev menu
                         Start-Sleep 2
                         & $adb -s emulator-5554 shell input tap 540 450 2>$null  # Reload
