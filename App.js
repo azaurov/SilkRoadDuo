@@ -8,8 +8,25 @@ import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const API = "https://api.groq.com/openai/v1/chat/completions";
-const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+
+// EXPO_PUBLIC_LLM_BACKEND: "openrouter" (default) | "groq" | "gemini" | "local"
+const BACKEND = process.env.EXPO_PUBLIC_LLM_BACKEND || "openrouter";
+const API =
+  BACKEND === "local"       ? "http://10.0.2.2:11434/v1/chat/completions" :
+  BACKEND === "groq"        ? "https://api.groq.com/openai/v1/chat/completions" :
+  BACKEND === "gemini"      ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" :
+                              "https://openrouter.ai/api/v1/chat/completions";
+const API_KEY =
+  BACKEND === "local"       ? "ollama" :
+  BACKEND === "groq"        ? process.env.EXPO_PUBLIC_GROQ_API_KEY :
+  BACKEND === "gemini"      ? process.env.EXPO_PUBLIC_GEMINI_API_KEY :
+                              process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
+const MODEL =
+  BACKEND === "local"       ? "gemma4" :
+  BACKEND === "groq"        ? "llama-3.3-70b-versatile" :
+  BACKEND === "gemini"      ? "gemini-2.0-flash" :
+                              "openai/gpt-oss-120b:free";
+
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
 
@@ -126,9 +143,13 @@ async function fetchLesson(langId, topicId) {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${API_KEY}`,
+      ...(BACKEND === "openrouter" && {
+        "HTTP-Referer": "https://silkroadduo.app",
+        "X-Title": "SilkRoadDuo",
+      }),
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: MODEL,
       max_tokens: 2000,
       messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
     }),
