@@ -861,14 +861,31 @@ export default function App() {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
   const [resultData, setResultData] = useState(null);
+  const prefetchedLesson = useRef(null);
+
+  const triggerPrefetch = (langId, topicId) => {
+    fetchLesson(langId, topicId)
+      .then(exs => { prefetchedLesson.current = { langId, topicId, exs }; })
+      .catch(() => {});
+  };
 
   const startLesson = async (lang, topicId) => {
-    setActiveLang(lang); setActiveTopic(topicId); setScreen("loading"); setError(null);
+    setActiveLang(lang); setActiveTopic(topicId); setError(null);
+    const cached = prefetchedLesson.current;
+    if (cached && cached.langId === lang.id && cached.topicId === topicId) {
+      prefetchedLesson.current = null;
+      setExercises(cached.exs);
+      setScreen("lesson");
+      triggerPrefetch(lang.id, topicId);
+      return;
+    }
+    setScreen("loading");
     try {
       const exs = await fetchLesson(lang.id, topicId);
       if (!Array.isArray(exs) || exs.length === 0) throw new Error("empty");
       setExercises(exs);
       setScreen("lesson");
+      triggerPrefetch(lang.id, topicId);
     } catch (e) {
       setError(e.message || "Unknown error. Check Expo logs for details.");
       setScreen("home");
