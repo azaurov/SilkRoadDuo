@@ -4,6 +4,7 @@ import {
   StyleSheet, Animated, ActivityIndicator, StatusBar,
   Platform, Dimensions,
 } from "react-native";
+import * as Speech from "expo-speech";
 import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
@@ -69,6 +70,14 @@ const LANGS = [
   },
 ];
 
+// TTS locales only for languages with real device voice support
+const SPEECH_LOCALE = {
+  farsi:  "fa-IR",
+  arabic: "ar-SA",
+  uzbek:  "uz-UZ",
+  hebrew: "he-IL",
+};
+
 /* ─── Lesson Topics ─────────────────────────────────────────────────────── */
 const TOPICS = [
   { id: "greetings", name: "Greetings", emoji: "👋", desc: "Hello, goodbye & pleasantries" },
@@ -121,10 +130,10 @@ function buildPrompt(langId, topicId) {
     aramaic: "Aramaic (Classical/Syriac, use romanized transliteration)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
-  return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 8 exercises.${topicHint}
+  return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 20 exercises.${topicHint}
 Return ONLY a valid JSON array, no markdown fences, no explanation.
 
-Use these types in order: mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq
+Use these types in order: mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, wordarrange
 
 MCQ: {"type":"mcq","direction":"target_to_en","word":"<romanized>","word_native":"<native script>","english":"<meaning>","correct":"<correct option>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"],"fun_fact":"<cultural fact>"}
 
@@ -150,7 +159,7 @@ async function fetchLesson(langId, topicId) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 2000,
+      max_tokens: 5000,
       messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
     }),
   });
@@ -209,11 +218,18 @@ function sogdianFont(text = "") {
 function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
   const [selected, setSelected] = useState(null);
   const isNative = ex.direction === "target_to_en";
+  const ttsLocale = SPEECH_LOCALE[lang.id];
+  const ttsWord = ex.word_native || ex.word;
 
   const handle = (opt) => {
     if (disabled || selected) return;
     setSelected(opt);
     setTimeout(() => onAnswer(opt === ex.correct, opt), 350);
+  };
+
+  const speak = () => {
+    Speech.stop();
+    Speech.speak(ttsWord, { language: ttsLocale });
   };
 
   const optStyle = (opt) => {
@@ -237,6 +253,11 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
         </Text>
         {isNative && ex.word_native && ex.word !== ex.word_native && (
           <Text style={styles.promptRomanized}>{ex.word}</Text>
+        )}
+        {ttsLocale && (
+          <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
+            <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
+          </TouchableOpacity>
         )}
       </View>
       <View style={{ gap: 10 }}>
@@ -1051,5 +1072,8 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 12,
   },
   errorText: { color: "#8B0000", fontWeight: "700", textAlign: "center", fontSize: 13 },
+
+  speakBtn: { position: "absolute", top: 10, right: 10, padding: 6 },
+  speakBtnText: { fontSize: 22 },
 });
 
