@@ -70,12 +70,12 @@ const LANGS = [
   },
 ];
 
-// TTS locales only for languages with real device voice support
+// Languages with a native-script TTS locale; others use device default (romanized word)
 const SPEECH_LOCALE = {
-  farsi:  "fa-IR",
-  arabic: "ar-SA",
-  uzbek:  "uz-UZ",
-  hebrew: "he-IL",
+  farsi:     "fa-IR",
+  arabic:    "ar-SA",
+  uzbek:     "uz-UZ",
+  hebrew:    "he-IL",
 };
 
 /* ─── Lesson Topics ─────────────────────────────────────────────────────── */
@@ -215,11 +215,12 @@ function sogdianFont(text = "") {
 }
 
 /* ─── MCQ Exercise ──────────────────────────────────────────────────────── */
-function ExerciseMCQ({ ex, lang, onAnswer, disabled, ttsAvailable }) {
+function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
   const [selected, setSelected] = useState(null);
   const isNative = ex.direction === "target_to_en";
   const ttsLocale = SPEECH_LOCALE[lang.id];
-  const ttsWord = ex.word_native || ex.word;
+  // With a locale: speak native script. Without: speak romanized word via default TTS.
+  const ttsWord = ttsLocale ? (ex.word_native || ex.word) : ex.word;
 
   const handle = (opt) => {
     if (disabled || selected) return;
@@ -229,7 +230,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, ttsAvailable }) {
 
   const speak = () => {
     Speech.stop();
-    Speech.speak(ttsWord, { language: ttsLocale });
+    Speech.speak(ttsWord, ttsLocale ? { language: ttsLocale } : {});
   };
 
   const optStyle = (opt) => {
@@ -254,11 +255,9 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, ttsAvailable }) {
         {isNative && ex.word_native && ex.word !== ex.word_native && (
           <Text style={styles.promptRomanized}>{ex.word}</Text>
         )}
-        {ttsLocale && ttsAvailable && (
-          <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
-            <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
+          <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
+        </TouchableOpacity>
       </View>
       <View style={{ gap: 10 }}>
         {ex.options.map((opt, i) => (
@@ -678,7 +677,7 @@ function AchievementsScreen({ stats, onBack }) {
 }
 
 /* ─── Lesson Screen ─────────────────────────────────────────────────────── */
-function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLangs }) {
+function LessonScreen({ lang, exercises, onComplete, onQuit }) {
   const [idx, setIdx] = useState(0);
   const [hearts, setHearts] = useState(HEARTS_MAX);
   const [xp, setXp] = useState(0);
@@ -745,7 +744,7 @@ function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLangs }
 
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: feedback ? 200 : 24 }}>
         <Text style={styles.exerciseLabel}>{exerciseLabel}</Text>
-        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} ttsAvailable={availableTtsLangs ? availableTtsLangs.has(lang.id) : false} />}
+        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
         {ex.type === "fillblank" && <ExerciseFillBlank key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
         {ex.type === "match" && <ExerciseMatch key={idx} ex={ex} lang={lang} onComplete={handleMatchComplete} />}
         {ex.type === "wordarrange" && <ExerciseWordArrange key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
@@ -862,21 +861,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
   const [resultData, setResultData] = useState(null);
-  const [availableTtsLangs, setAvailableTtsLangs] = useState(null);
   const prefetchedLesson = useRef(null);
-
-  useEffect(() => {
-    Speech.getAvailableVoicesAsync().then(voices => {
-      const supported = new Set();
-      for (const [langId, locale] of Object.entries(SPEECH_LOCALE)) {
-        const prefix = locale.split("-")[0].toLowerCase();
-        if (voices.some(v => v.language && v.language.toLowerCase().startsWith(prefix))) {
-          supported.add(langId);
-        }
-      }
-      setAvailableTtsLangs(supported);
-    }).catch(() => setAvailableTtsLangs(new Set()));
-  }, []);
 
   const triggerPrefetch = (langId, topicId) => {
     fetchLesson(langId, topicId)
@@ -950,8 +935,7 @@ export default function App() {
         {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
         {screen === "lesson" && activeLang && exercises.length > 0 && (
           <LessonScreen lang={activeLang} exercises={exercises}
-            onComplete={handleLessonComplete} onQuit={() => setScreen("home")}
-            availableTtsLangs={availableTtsLangs} />
+            onComplete={handleLessonComplete} onQuit={() => setScreen("home")} />
         )}
         {screen === "result" && activeLang && resultData && (
           <ResultScreen
