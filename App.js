@@ -882,14 +882,20 @@ export default function App() {
 
   useEffect(() => {
     let sound;
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true }).then(() =>
-      Audio.Sound.createAsync(require("./assets/prince_of_persia.mp3"), { isLooping: true, volume: 0.5 })
-    ).then(({ sound: s }) => {
-      sound = s;
-      themeSoundRef.current = s;
-      s.playAsync();
-    }).catch(() => {});
-    return () => { sound?.unloadAsync(); };
+    const loadTheme = async () => {
+      try {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+        const { sound: s } = await Audio.Sound.createAsync(
+          require("./assets/prince_of_persia.mp3"),
+          { isLooping: true, volume: 0.5 }
+        );
+        sound = s;
+        themeSoundRef.current = s;
+        await s.playAsync();
+      } catch (_) {}
+    };
+    loadTheme();
+    return () => { themeSoundRef.current?.unloadAsync().catch(() => {}); };
   }, []);
 
   // Android TTS engine initialises asynchronously — retry until voices populate
