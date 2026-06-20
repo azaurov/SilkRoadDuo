@@ -5,7 +5,7 @@ import {
   Platform, Dimensions,
 } from "react-native";
 import * as Speech from "expo-speech";
-import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -215,7 +215,7 @@ function sogdianFont(text = "") {
 }
 
 /* ─── MCQ Exercise ──────────────────────────────────────────────────────── */
-function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
+function ExerciseMCQ({ ex, lang, onAnswer, disabled, ttsAvailable }) {
   const [selected, setSelected] = useState(null);
   const isNative = ex.direction === "target_to_en";
   const ttsLocale = SPEECH_LOCALE[lang.id];
@@ -254,7 +254,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
         {isNative && ex.word_native && ex.word !== ex.word_native && (
           <Text style={styles.promptRomanized}>{ex.word}</Text>
         )}
-        {ttsLocale && (
+        {ttsLocale && ttsAvailable && (
           <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
             <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
           </TouchableOpacity>
@@ -469,12 +469,13 @@ function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
 /* ─── Feedback Bar ──────────────────────────────────────────────────────── */
 function FeedbackBar({ correct, funFact, onContinue, lang, correctAnswer }) {
   const slideAnim = useRef(new Animated.Value(200)).current;
+  const insets = useSafeAreaInsets();
   useEffect(() => {
     Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }).start();
   }, []);
 
   return (
-    <Animated.View style={[styles.feedbackBar, { backgroundColor: correct ? "#D7FFB8" : "#FFD0D0", borderTopColor: correct ? "#58CC02" : "#FF4B4B", transform: [{ translateY: slideAnim }] }]}>
+    <Animated.View style={[styles.feedbackBar, { backgroundColor: correct ? "#D7FFB8" : "#FFD0D0", borderTopColor: correct ? "#58CC02" : "#FF4B4B", paddingBottom: Math.max(insets.bottom + 12, 24), transform: [{ translateY: slideAnim }] }]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 }}>
         <Text style={{ fontSize: 28 }}>{correct ? "🎉" : "💡"}</Text>
         <View style={{ flex: 1 }}>
@@ -677,7 +678,7 @@ function AchievementsScreen({ stats, onBack }) {
 }
 
 /* ─── Lesson Screen ─────────────────────────────────────────────────────── */
-function LessonScreen({ lang, exercises, onComplete, onQuit }) {
+function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLangs }) {
   const [idx, setIdx] = useState(0);
   const [hearts, setHearts] = useState(HEARTS_MAX);
   const [xp, setXp] = useState(0);
@@ -744,7 +745,7 @@ function LessonScreen({ lang, exercises, onComplete, onQuit }) {
 
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: feedback ? 200 : 24 }}>
         <Text style={styles.exerciseLabel}>{exerciseLabel}</Text>
-        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
+        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} ttsAvailable={availableTtsLangs ? availableTtsLangs.has(lang.id) : false} />}
         {ex.type === "fillblank" && <ExerciseFillBlank key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
         {ex.type === "match" && <ExerciseMatch key={idx} ex={ex} lang={lang} onComplete={handleMatchComplete} />}
         {ex.type === "wordarrange" && <ExerciseWordArrange key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
@@ -861,7 +862,21 @@ export default function App() {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
   const [resultData, setResultData] = useState(null);
+  const [availableTtsLangs, setAvailableTtsLangs] = useState(null);
   const prefetchedLesson = useRef(null);
+
+  useEffect(() => {
+    Speech.getAvailableVoicesAsync().then(voices => {
+      const supported = new Set();
+      for (const [langId, locale] of Object.entries(SPEECH_LOCALE)) {
+        const prefix = locale.split("-")[0].toLowerCase();
+        if (voices.some(v => v.language && v.language.toLowerCase().startsWith(prefix))) {
+          supported.add(langId);
+        }
+      }
+      setAvailableTtsLangs(supported);
+    }).catch(() => setAvailableTtsLangs(new Set()));
+  }, []);
 
   const triggerPrefetch = (langId, topicId) => {
     fetchLesson(langId, topicId)
@@ -935,7 +950,8 @@ export default function App() {
         {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
         {screen === "lesson" && activeLang && exercises.length > 0 && (
           <LessonScreen lang={activeLang} exercises={exercises}
-            onComplete={handleLessonComplete} onQuit={() => setScreen("home")} />
+            onComplete={handleLessonComplete} onQuit={() => setScreen("home")}
+            availableTtsLangs={availableTtsLangs} />
         )}
         {screen === "result" && activeLang && resultData && (
           <ResultScreen
@@ -1002,7 +1018,7 @@ const styles = StyleSheet.create({
 
   feedbackBar: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    padding: 20, paddingBottom: Platform.OS === "ios" ? 36 : 24,
+    padding: 20,
     borderTopWidth: 4,
   },
   feedbackTitle: { fontSize: 18, fontWeight: "900" },
