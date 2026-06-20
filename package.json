@@ -4,15 +4,15 @@
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios"
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "expo": "^56.0.3",
-    "expo-av": "^16.0.8",
+    "expo-audio": "~56.0.12",
     "expo-font": "~56.0.7",
     "expo-speech": "~56.0.3",
     "expo-status-bar": "~56.0.4",

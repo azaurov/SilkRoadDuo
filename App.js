@@ -5,7 +5,7 @@ import {
   Platform, Dimensions,
 } from "react-native";
 import * as Speech from "expo-speech";
-import { Audio } from "expo-av";
+import { useAudioPlayer } from "expo-audio";
 import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
@@ -878,24 +878,14 @@ export default function App() {
   const [resultData, setResultData] = useState(null);
   const [availableTtsLocales, setAvailableTtsLocales] = useState(new Set());
   const prefetchedLesson = useRef(null);
-  const themeSoundRef = useRef(null);
+  const themePlayer = useAudioPlayer(require("./assets/prince_of_persia.mp3"));
 
   useEffect(() => {
-    let sound;
-    const loadTheme = async () => {
-      try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-        const { sound: s } = await Audio.Sound.createAsync(
-          require("./assets/prince_of_persia.mp3"),
-          { isLooping: true, volume: 0.5 }
-        );
-        sound = s;
-        themeSoundRef.current = s;
-        await s.playAsync();
-      } catch (_) {}
-    };
-    loadTheme();
-    return () => { themeSoundRef.current?.unloadAsync().catch(() => {}); };
+    try {
+      themePlayer.loop = true;
+      themePlayer.volume = 0.5;
+      themePlayer.play();
+    } catch (_) {}
   }, []);
 
   // Android TTS engine initialises asynchronously — retry until voices populate
@@ -921,8 +911,8 @@ export default function App() {
       .catch(() => {});
   };
 
-  const stopTheme = () => themeSoundRef.current?.pauseAsync().catch(() => {});
-  const resumeTheme = () => themeSoundRef.current?.playAsync().catch(() => {});
+  const stopTheme = () => { try { themePlayer.pause(); } catch (_) {} };
+  const resumeTheme = () => { try { themePlayer.play(); } catch (_) {} };
 
   const startLesson = async (lang, topicId) => {
     stopTheme();
