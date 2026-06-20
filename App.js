@@ -10,23 +10,8 @@ import { useFonts } from "expo-font";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
-// EXPO_PUBLIC_LLM_BACKEND: "openrouter" (default) | "groq" | "gemini" | "local"
-const BACKEND = process.env.EXPO_PUBLIC_LLM_BACKEND || "openrouter";
-const API =
-  BACKEND === "local"       ? "http://10.0.2.2:11434/v1/chat/completions" :
-  BACKEND === "groq"        ? "https://api.groq.com/openai/v1/chat/completions" :
-  BACKEND === "gemini"      ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" :
-                              "https://openrouter.ai/api/v1/chat/completions";
-const API_KEY =
-  BACKEND === "local"       ? "ollama" :
-  BACKEND === "groq"        ? process.env.EXPO_PUBLIC_GROQ_API_KEY :
-  BACKEND === "gemini"      ? process.env.EXPO_PUBLIC_GEMINI_API_KEY :
-                              process.env.EXPO_PUBLIC_OPENROUTER_API_KEY;
-const MODEL =
-  BACKEND === "local"       ? "gemma4" :
-  BACKEND === "groq"        ? "llama-3.3-70b-versatile" :
-  BACKEND === "gemini"      ? "gemini-2.0-flash" :
-                              "openai/gpt-oss-120b:free";
+// EXPO_PUBLIC_LLM_BACKEND: "groq" (default) | "openrouter" | "gemini" | "local"
+const BACKEND = process.env.EXPO_PUBLIC_LLM_BACKEND || "groq";
 
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
@@ -146,23 +131,32 @@ WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<wor
 Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE words should be 4-5 romanized target-language words that form a simple sentence.`;
 }
 
-async function fetchLesson(langId, topicId) {
-  const r = await fetch(API, {
+function backendRequest(backend, prompt) {
+  const configs = {
+    groq:        { url: "https://api.groq.com/openai/v1/chat/completions",        key: process.env.EXPO_PUBLIC_GROQ_API_KEY,        model: "llama-3.3-70b-versatile" },
+    openrouter:  { url: "https://openrouter.ai/api/v1/chat/completions",          key: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY, model: "openai/gpt-oss-120b:free" },
+    gemini:      { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.EXPO_PUBLIC_GEMINI_API_KEY, model: "gemini-2.0-flash" },
+    local:       { url: "http://10.0.2.2:11434/v1/chat/completions",              key: "ollama",                                   model: "gemma4" },
+  };
+  const { url, key, model } = configs[backend] || configs.openrouter;
+  return fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${API_KEY}`,
-      ...(BACKEND === "openrouter" && {
-        "HTTP-Referer": "https://silkroadduo.app",
-        "X-Title": "SilkRoadDuo",
-      }),
+      "Authorization": `Bearer ${key}`,
+      ...(backend === "openrouter" && { "HTTP-Referer": "https://silkroadduo.app", "X-Title": "SilkRoadDuo" }),
     },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 8000,
-      messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
-    }),
+    body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
   });
+}
+
+async function fetchLesson(langId, topicId) {
+  const prompt = buildPrompt(langId, topicId);
+  let r = await backendRequest(BACKEND, prompt);
+  // Auto-fallback to OpenRouter on Groq rate-limit
+  if (r.status === 429 && BACKEND === "groq") {
+    r = await backendRequest("openrouter", prompt);
+  }
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const raw = d.choices?.[0]?.message?.content || "[]";
