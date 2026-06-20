@@ -159,14 +159,25 @@ async function fetchLesson(langId, topicId) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 5000,
+      max_tokens: 8000,
       messages: [{ role: "user", content: buildPrompt(langId, topicId) }],
     }),
   });
   const d = await r.json();
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
-  const text = d.choices?.[0]?.message?.content || "[]";
-  const exercises = JSON.parse(text.replace(/```json|```/g, "").trim());
+  const raw = d.choices?.[0]?.message?.content || "[]";
+  let jsonStr = raw.replace(/```json|```/g, "").trim();
+  const start = jsonStr.indexOf("[");
+  const end = jsonStr.lastIndexOf("]");
+  if (start !== -1 && end > start) jsonStr = jsonStr.slice(start, end + 1);
+  let exercises;
+  try {
+    exercises = JSON.parse(jsonStr);
+  } catch {
+    // Response truncated mid-array — drop the incomplete last element
+    const lastComma = jsonStr.lastIndexOf(",");
+    exercises = lastComma > 0 ? JSON.parse(jsonStr.slice(0, lastComma) + "]") : [];
+  }
   // Sogdian ancient script cannot be shaped by Android's HarfBuzz; use romanized only
   if (langId === "sogdian") {
     exercises.forEach(ex => { delete ex.word_native; });
