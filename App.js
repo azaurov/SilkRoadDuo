@@ -224,12 +224,13 @@ function sogdianFont(text = "") {
 }
 
 /* ─── MCQ Exercise ──────────────────────────────────────────────────────── */
-function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
+function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
   const [selected, setSelected] = useState(null);
   const isNative = ex.direction === "target_to_en";
   const ttsLocale = SPEECH_LOCALE[lang.id];
-  // With a locale: speak native script. Without: speak romanized word via default TTS.
-  const ttsWord = ttsLocale ? (ex.word_native || ex.word) : ex.word;
+  const localePrefix = ttsLocale?.split("-")[0].toLowerCase();
+  // Only use native-script TTS if the device actually has that voice installed
+  const nativeVoiceAvailable = !!(ttsLocale && availableTtsLocales?.has(localePrefix));
 
   const handle = (opt) => {
     if (disabled || selected) return;
@@ -239,9 +240,8 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled }) {
 
   const speak = () => {
     Speech.stop();
-    if (ttsLocale) {
-      // Try native-script voice; fall back to romanized if locale voice not installed
-      Speech.speak(ttsWord, { language: ttsLocale, onError: () => Speech.speak(ex.word, {}) });
+    if (nativeVoiceAvailable) {
+      Speech.speak(ex.word_native || ex.word, { language: ttsLocale });
     } else {
       Speech.speak(ex.word, {});
     }
@@ -691,7 +691,7 @@ function AchievementsScreen({ stats, onBack }) {
 }
 
 /* ─── Lesson Screen ─────────────────────────────────────────────────────── */
-function LessonScreen({ lang, exercises, onComplete, onQuit }) {
+function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales }) {
   const [idx, setIdx] = useState(0);
   const [hearts, setHearts] = useState(HEARTS_MAX);
   const [xp, setXp] = useState(0);
@@ -758,7 +758,7 @@ function LessonScreen({ lang, exercises, onComplete, onQuit }) {
 
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: feedback ? 200 : 24 }}>
         <Text style={styles.exerciseLabel}>{exerciseLabel}</Text>
-        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
+        {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} availableTtsLocales={availableTtsLocales} />}
         {ex.type === "fillblank" && <ExerciseFillBlank key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
         {ex.type === "match" && <ExerciseMatch key={idx} ex={ex} lang={lang} onComplete={handleMatchComplete} />}
         {ex.type === "wordarrange" && <ExerciseWordArrange key={idx} ex={ex} lang={lang} onAnswer={handleAnswer} disabled={!!feedback} />}
@@ -875,7 +875,25 @@ export default function App() {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
   const [resultData, setResultData] = useState(null);
+  const [availableTtsLocales, setAvailableTtsLocales] = useState(new Set());
   const prefetchedLesson = useRef(null);
+
+  // Android TTS engine initialises asynchronously — retry until voices populate
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const voices = await Speech.getAvailableVoicesAsync().catch(() => []);
+      if (cancelled) return;
+      if (voices.length > 0) {
+        const locales = new Set(voices.map(v => v.language?.split("-")[0].toLowerCase()).filter(Boolean));
+        setAvailableTtsLocales(locales);
+      } else {
+        setTimeout(check, 1500);
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, []);
 
   const triggerPrefetch = (langId, topicId) => {
     fetchLesson(langId, topicId)
@@ -949,7 +967,8 @@ export default function App() {
         {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
         {screen === "lesson" && activeLang && exercises.length > 0 && (
           <LessonScreen lang={activeLang} exercises={exercises}
-            onComplete={handleLessonComplete} onQuit={() => setScreen("home")} />
+            onComplete={handleLessonComplete} onQuit={() => setScreen("home")}
+            availableTtsLocales={availableTtsLocales} />
         )}
         {screen === "result" && activeLang && resultData && (
           <ResultScreen
