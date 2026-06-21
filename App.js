@@ -181,14 +181,15 @@ async function fetchLesson(langId, topicId) {
   if (langId === "sogdian") {
     exercises.forEach(ex => { delete ex.word_native; });
   }
-  // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace drift)
+  // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
+  const norm = s => (s || "").normalize("NFC").replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").trim().toLowerCase();
   return exercises.map(ex => {
     if (ex.type === "mcq" && ex.options) {
-      const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct || "").trim().toLowerCase());
+      const match = ex.options.find(o => norm(o) === norm(ex.correct));
       if (match) ex.correct = match;
     }
     if (ex.type === "fillblank" && ex.options) {
-      const match = ex.options.find(o => o.trim().toLowerCase() === (ex.correct_target || "").trim().toLowerCase());
+      const match = ex.options.find(o => norm(o) === norm(ex.correct_target));
       if (match) ex.correct_target = match;
     }
     return ex;
