@@ -430,7 +430,7 @@ function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
   };
 
   const submit = () => {
-    if (placed.length !== ex.words.length) return;
+    if (placed.length === 0) return;
     const isCorrect = placed.join("|") === ex.correct_order.join("|");
     setCorrect(isCorrect);
     setSubmitted(true);
@@ -471,7 +471,7 @@ function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
       </View>
 
       {/* Submit button */}
-      {!submitted && placed.length === ex.words.length && (
+      {!submitted && placed.length > 0 && (
         <TouchableOpacity style={[styles.submitBtn, { backgroundColor: lang.color, borderBottomColor: lang.shadow }]}
           onPress={submit} activeOpacity={0.85}>
           <Text style={styles.submitBtnText}>CHECK</Text>
