@@ -1071,12 +1071,21 @@ export default function App() {
       ...(activeProfile?.achievements || []),
       ...newAchievements.map(a => a.id),
     ];
-    setStats(newStats);
-    if (activeProfileId && newAchievements.length > 0) {
-      updateProfileAtomic(activeProfileId, { achievements: newAchievementIds }).catch(() => {});
-      setProfiles((prev) =>
-        prev.map((p) => p.id === activeProfileId ? { ...p, achievements: newAchievementIds } : p)
-      );
+    // Update UI state immediately
+    setStatsState(newStats);
+    setProfiles((prev) =>
+      prev.map((p) => p.id === activeProfileId
+        ? { ...p, stats: { ...newStats }, achievements: newAchievementIds }
+        : p)
+    );
+    // Single atomic write — avoids the race between a stats write and an
+    // achievements write each loading the same stale snapshot and clobbering
+    // each other (always fires on first lesson which unlocks "First Steps").
+    if (activeProfileId) {
+      updateProfileAtomic(activeProfileId, {
+        stats: newStats,
+        achievements: newAchievementIds,
+      }).catch((err) => console.warn("[profiles] persist failed:", err));
     }
     setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
     setScreen("result");

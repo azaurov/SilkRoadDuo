@@ -29,10 +29,25 @@
         "projectId": "1b16f9e7-520c-448f-8e42-0e1ee3456dd9"
       }
     },
+    "web": {
+      "output": "single",
+      "bundler": "metro",
+      "favicon": "./assets/icon.png",
+      "name": "Silk Road Duo",
+      "shortName": "SilkRoad",
+      "themeColor": "#8B4513",
+      "backgroundColor": "#F5ECD7",
+      "display": "standalone",
+      "orientation": "portrait"
+    },
+    "experiments": {
+      "baseUrl": "/SilkRoadDuo"
+    },
     "plugins": [
       "expo-status-bar",
       "expo-font",
-      "expo-updates"
+      "expo-updates",
+      "expo-audio"
     ]
   }
 }

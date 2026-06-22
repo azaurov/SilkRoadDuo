@@ -1,0 +1,19 @@
+{
+  "name": "Silk Road Duo",
+  "short_name": "SilkRoad",
+  "description": "Learn languages of the Silk Road — Bukharian, Farsi, Arabic, Hebrew, Uzbek, Sogdian, Aramaic",
+  "lang": "en",
+  "start_url": "/SilkRoadDuo/",
+  "scope": "/SilkRoadDuo/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#8B4513",
+  "background_color": "#F5ECD7",
+  "icons": [
+    {
+      "src": "/SilkRoadDuo/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
