@@ -2,12 +2,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Animated, ActivityIndicator, StatusBar,
-  Platform, Dimensions,
+  Platform, Dimensions, Pressable,
 } from "react-native";
 import * as Speech from "expo-speech";
 import { useAudioPlayer } from "expo-audio";
 import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
+import {
+  loadProfiles, loadActiveId, saveActiveId,
+  deleteProfile as deleteProfileStore,
+  updateProfileAtomic, bumpStreak,
+} from "./assets/lib/profiles";
+import { ProfileSelectScreen, ProfileCreateScreen, ProfileSwitcherModal } from "./assets/lib/profiles_ui";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -776,7 +782,7 @@ function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales
 
 
 /* ─── Home Screen ───────────────────────────────────────────────────────── */
-function HomeScreen({ onSelect, stats, onAchievements }) {
+function HomeScreen({ onSelect, stats, onAchievements, profile, onSwitchProfile }) {
   const dailyTip = CULTURAL_TIPS[new Date().getDate() % CULTURAL_TIPS.length];
   const unlockedCount = ACHIEVEMENTS.filter(a => a.check(stats)).length;
 
@@ -789,6 +795,19 @@ function HomeScreen({ onSelect, stats, onAchievements }) {
           <Text style={styles.homeHeaderEyebrow}>THE SILK ROAD</Text>
           <Text style={styles.homeTitle}>Language Lab</Text>
           <Text style={styles.homeSubtitle}>Seven ancient languages, one modern method</Text>
+          {profile && (
+            <Pressable
+              onPress={onSwitchProfile}
+              style={styles.profilePill}
+              accessibilityLabel={`Active profile: ${profile.name}. Tap to switch.`}
+            >
+              <View style={[styles.profilePillAvatar, { backgroundColor: profile.color }]}>
+                <Text style={styles.profilePillEmoji}>{profile.avatar}</Text>
+              </View>
+              <Text style={styles.profilePillName}>{profile.name}</Text>
+              <Text style={styles.profilePillChevron}>⇅</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Stats */}
@@ -875,9 +894,32 @@ export default function App() {
   const [activeTopic, setActiveTopic] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [error, setError] = useState(null);
-  const [stats, setStats] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0 });
+  const [stats, setStatsState] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
   const [resultData, setResultData] = useState(null);
   const [availableTtsLocales, setAvailableTtsLocales] = useState(new Set());
+
+  // ── Profile state ────────────────────────────────────────────────────────
+  const [profiles, setProfiles] = useState([]);
+  const [activeProfileId, setActiveProfileId] = useState(null);
+  const [profileBootstrapped, setProfileBootstrapped] = useState(false);
+  const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const [showProfileCreate, setShowProfileCreate] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(null);
+
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
+
+  // setStats wrapper: updates in-memory state and persists to active profile
+  const setStats = useCallback((newStats) => {
+    setStatsState(newStats);
+    if (activeProfileId) {
+      updateProfileAtomic(activeProfileId, { stats: newStats }).catch((err) =>
+        console.warn("[profiles] persist stats failed:", err)
+      );
+      setProfiles((prev) =>
+        prev.map((p) => p.id === activeProfileId ? { ...p, stats: { ...newStats } } : p)
+      );
+    }
+  }, [activeProfileId]);
   const prefetchedLesson = useRef(null);
   const themePlayer = useAudioPlayer(require("./assets/prince_of_persia.mp3"));
 
@@ -905,6 +947,79 @@ export default function App() {
     check();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Profile bootstrap ────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await loadProfiles();
+        if (cancelled) return;
+        setProfiles(stored);
+        if (stored.length > 0) {
+          const savedId = await loadActiveId();
+          const exists = stored.find((p) => p.id === savedId) || stored[0];
+          if (!cancelled) {
+            setActiveProfileId(exists.id);
+            setStatsState(exists.stats || { streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
+          }
+        }
+      } catch (err) {
+        console.warn("[profiles] bootstrap failed:", err);
+      } finally {
+        if (!cancelled) setProfileBootstrapped(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Profile actions ──────────────────────────────────────────────────────
+  const handleSelectProfile = async (id) => {
+    const p = profiles.find((x) => x.id === id);
+    setActiveProfileId(id);
+    setStatsState(p?.stats || { streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
+    await saveActiveId(id);
+    setShowProfilePicker(false);
+  };
+
+  const handleCreateProfile = () => {
+    setShowProfilePicker(false);
+    setEditingProfile(null);
+    setShowProfileCreate(true);
+  };
+
+  const handleEditProfile = (profile) => {
+    setShowProfilePicker(false);
+    setEditingProfile(profile);
+    setShowProfileCreate(true);
+  };
+
+  const handleProfileCreated = async (profile) => {
+    const fresh = await loadProfiles();
+    setProfiles(fresh);
+    if (!editingProfile) {
+      setActiveProfileId(profile.id);
+      await saveActiveId(profile.id);
+      setStatsState(profile.stats);
+    } else if (profile.id === activeProfileId) {
+      setStatsState(profile.stats);
+    }
+    setEditingProfile(null);
+    setShowProfileCreate(false);
+  };
+
+  const handleDeleteProfile = async (id) => {
+    const fresh = await deleteProfileStore(id);
+    setProfiles(fresh);
+    if (activeProfileId === id) {
+      const next = fresh[0]?.id ?? null;
+      setActiveProfileId(next);
+      await saveActiveId(next);
+      const nextProfile = fresh.find((p) => p.id === next);
+      setStatsState(nextProfile?.stats || { streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
+      if (!next) setProfileBootstrapped(true); // stay on picker
+    }
+  };
 
   const triggerPrefetch = (langId, topicId) => {
     fetchLesson(langId, topicId)
@@ -940,22 +1055,62 @@ export default function App() {
   };
 
   const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect }) => {
+    const { streak, lastActiveDate } = bumpStreak(stats.streak, stats.lastActiveDate);
     const newStats = {
       ...stats,
       totalXP: stats.totalXP + xp,
       lessons: stats.lessons + 1,
       perfectLessons: stats.perfectLessons + (isPerfect ? 1 : 0),
-      streak: stats.streak + 1,
+      streak,
+      lastActiveDate,
       [activeLang.id + "_xp"]: (stats[activeLang.id + "_xp"] || 0) + xp,
     };
     const prevUnlocked = new Set(ACHIEVEMENTS.filter(a => a.check(stats)).map(a => a.id));
     const newAchievements = ACHIEVEMENTS.filter(a => a.check(newStats) && !prevUnlocked.has(a.id));
+    const newAchievementIds = [
+      ...(activeProfile?.achievements || []),
+      ...newAchievements.map(a => a.id),
+    ];
     setStats(newStats);
+    if (activeProfileId && newAchievements.length > 0) {
+      updateProfileAtomic(activeProfileId, { achievements: newAchievementIds }).catch(() => {});
+      setProfiles((prev) =>
+        prev.map((p) => p.id === activeProfileId ? { ...p, achievements: newAchievementIds } : p)
+      );
+    }
     setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
     setScreen("result");
-  }, [stats, activeLang, exercises]);
+  }, [stats, activeLang, exercises, activeProfileId, activeProfile]);
 
   if (!fontsLoaded) return null;
+
+  // Show profile picker until bootstrapped and a profile is active
+  if (!profileBootstrapped) return null;
+  if (profileBootstrapped && !activeProfileId) {
+    if (showProfileCreate) {
+      return (
+        <SafeAreaProvider>
+          <ProfileCreateScreen
+            initial={editingProfile}
+            onCreated={handleProfileCreated}
+            onCancel={() => { setShowProfileCreate(false); setEditingProfile(null); }}
+          />
+        </SafeAreaProvider>
+      );
+    }
+    return (
+      <SafeAreaProvider>
+        <ProfileSelectScreen
+          profiles={profiles}
+          activeId={activeProfileId}
+          onSelectProfile={handleSelectProfile}
+          onCreateNew={handleCreateProfile}
+          onDeleteProfile={handleDeleteProfile}
+          onEditProfile={handleEditProfile}
+        />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -965,11 +1120,32 @@ export default function App() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
-        {screen === "home" && (
+        {showProfileCreate && (
+          <ProfileCreateScreen
+            initial={editingProfile}
+            onCreated={handleProfileCreated}
+            onCancel={() => { setShowProfileCreate(false); setEditingProfile(null); }}
+          />
+        )}
+        {showProfilePicker && !showProfileCreate && (
+          <ProfileSwitcherModal
+            visible={showProfilePicker}
+            profiles={profiles}
+            activeId={activeProfileId}
+            onClose={() => setShowProfilePicker(false)}
+            onSwitch={handleSelectProfile}
+            onAddNew={handleCreateProfile}
+            onDelete={handleDeleteProfile}
+            onEdit={handleEditProfile}
+          />
+        )}
+        {screen === "home" && !showProfileCreate && (
           <HomeScreen
             onSelect={(lang) => { setActiveLang(lang); setScreen("topic"); }}
             stats={stats}
             onAchievements={() => setScreen("achievements")}
+            profile={activeProfile}
+            onSwitchProfile={() => setShowProfilePicker(true)}
           />
         )}
         {screen === "topic" && activeLang && (
@@ -1086,6 +1262,18 @@ const styles = StyleSheet.create({
   homeHeaderEyebrow: { color: "rgba(255,255,255,0.8)", fontWeight: "900", letterSpacing: 2, fontSize: 12, marginBottom: 6 },
   homeTitle: { color: "#fff", fontSize: 34, fontWeight: "900", letterSpacing: -0.5 },
   homeSubtitle: { color: "rgba(255,255,255,0.8)", fontWeight: "700", marginTop: 4, fontSize: 14 },
+  profilePill: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.18)", borderRadius: 20,
+    paddingVertical: 6, paddingHorizontal: 10, marginTop: 12, gap: 7,
+  },
+  profilePillAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    justifyContent: "center", alignItems: "center",
+  },
+  profilePillEmoji: { fontSize: 16 },
+  profilePillName: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  profilePillChevron: { color: "rgba(255,255,255,0.7)", fontSize: 14, fontWeight: "700" },
   statsBar: { flexDirection: "row", padding: 16, borderBottomWidth: 2, borderBottomColor: "#E5E5E5" },
   statBarValue: { fontSize: 18, fontWeight: "900", color: "#3C3C3C" },
   statBarLabel: { fontSize: 11, fontWeight: "700", color: "#AFAFAF" },
