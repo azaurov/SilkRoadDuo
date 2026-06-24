@@ -5,6 +5,7 @@ import {
   Platform, Dimensions, Pressable,
 } from "react-native";
 import * as Speech from "expo-speech";
+import * as Updates from "expo-updates";
 import { useAudioPlayer } from "expo-audio";
 import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
@@ -98,14 +99,19 @@ const ACHIEVEMENTS = [
 
 /* ─── Cultural Tips ─────────────────────────────────────────────────────── */
 const CULTURAL_TIPS = [
+  { emoji: "✡️", text: "Bukharian Jews trace their community to the ancient Persian diaspora — their dialect preserves medieval Tajik vocabulary lost elsewhere." },
+  { emoji: "📖", text: "The Radhanites were Jewish merchants of the 8th–10th centuries who monopolized long-distance trade between Christian Europe and the Islamic world, speaking Arabic, Persian, Greek, and Frankish." },
+  { emoji: "🏛️", text: "In the Islamic Golden Age (8th–13th c.), Jewish scholars in Baghdad translated Greek philosophy into Arabic, preserving Aristotle and Plato for both the Islamic and later European worlds." },
+  { emoji: "✡️", text: "Maimonides (1138–1204), a Jewish physician and philosopher from Córdoba, wrote medical treatises in Arabic that remained standard references in European universities for centuries." },
+  { emoji: "📜", text: "The Cairo Geniza — a synagogue storeroom discovered in 1896 — held 300,000 Jewish merchant letters spanning 1,000 years, revealing a sophisticated medieval trade network across the Silk Road world." },
+  { emoji: "🔬", text: "Jewish physicians dominated medieval medicine along Silk Road trade cities; in 10th-century Baghdad, most court doctors were Jewish scholars trained in Greek and Arabic medical texts." },
+  { emoji: "💎", text: "Bukharian Jewish merchants controlled much of Central Asia's gem and silk trade for centuries, with family trading networks stretching from Samarkand to Constantinople and Amsterdam." },
+  { emoji: "🎵", text: "Bukharian Jews developed a distinct musical tradition — Shash maqam — classical Tajik-Uzbek court music they preserved and performed as professional musicians for Silk Road rulers." },
+  { emoji: "🌍", text: "Benjamin of Tudela (1130–1173) was a Jewish traveler whose 12th-century account of Jewish communities from Spain to China is one of the most detailed medieval geographic records ever written." },
   { emoji: "🐪", text: "Sogdian merchants dominated Silk Road trade from the 4th–8th centuries, leaving inscriptions from China to Constantinople." },
-  { emoji: "📜", text: "Bukharian Jews trace their community to the ancient Persian diaspora — their dialect preserves medieval Tajik vocabulary lost elsewhere." },
   { emoji: "🌹", text: "Persian poetry gave the world over 70,000 verses from Hafez alone. 'Ghazal' — a love poem form — spread from Farsi to Urdu and Turkish." },
-  { emoji: "🕌", text: "Bukhara (in modern Uzbekistan) was once the world's most important center of Islamic scholarship, home to 300 mosques and 100 madrasas." },
   { emoji: "🌙", text: "Arabic became a lingua franca of science, medicine and philosophy in the medieval world — 'algebra', 'algorithm' and 'alcohol' are all Arabic loanwords." },
   { emoji: "🌟", text: "The Uzbek city of Samarkand was a key Silk Road hub where Chinese, Indian, Persian and Turkic cultures intermingled for centuries." },
-  { emoji: "🍊", text: "The word 'orange' entered English via Old French 'orenge', from Arabic 'nāranj', from Persian 'nārang', from Sanskrit 'nāraṅga'." },
-  { emoji: "🎶", text: "The oud (عود), ancestor of the European lute, traveled westward along the Silk Road and shaped Renaissance music." },
   { emoji: "🧭", text: "The Silk Road was not a single road but a network of routes spanning 4,000 miles from China to the Mediterranean." },
   { emoji: "💰", text: "Sogdian merchants used sophisticated letters of credit — effectively early banking — to transfer wealth across thousands of miles without carrying gold." },
 ];
@@ -792,6 +798,13 @@ function HomeScreen({ onSelect, stats, onAchievements, profile, onSwitchProfile 
       <ScrollView>
         {/* Header */}
         <View style={styles.homeHeader}>
+          <Pressable
+            onPress={() => Platform.OS === "web" ? window.location.reload() : Updates.reloadAsync()}
+            style={styles.reloadBtn}
+            accessibilityLabel="Reload app"
+          >
+            <Text style={styles.reloadBtnText}>↺</Text>
+          </Pressable>
           <Text style={styles.homeHeaderEyebrow}>THE SILK ROAD</Text>
           <Text style={styles.homeTitle}>Language Lab</Text>
           <Text style={styles.homeSubtitle}>Seven ancient languages, one modern method</Text>
@@ -1268,6 +1281,8 @@ const styles = StyleSheet.create({
   loadingTopic: { fontSize: 14, color: "#AFAFAF", fontWeight: "700" },
 
   homeHeader: { backgroundColor: "#58CC02", padding: 28, paddingTop: 20, alignItems: "center" },
+  reloadBtn: { position: "absolute", top: 14, right: 14, width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.15)", alignItems: "center", justifyContent: "center" },
+  reloadBtnText: { color: "#fff", fontSize: 22, lineHeight: 24 },
   homeHeaderEyebrow: { color: "rgba(255,255,255,0.8)", fontWeight: "900", letterSpacing: 2, fontSize: 12, marginBottom: 6 },
   homeTitle: { color: "#fff", fontSize: 34, fontWeight: "900", letterSpacing: -0.5 },
   homeSubtitle: { color: "rgba(255,255,255,0.8)", fontWeight: "700", marginTop: 4, fontSize: 14 },
