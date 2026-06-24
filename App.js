@@ -165,16 +165,16 @@ function backendRequest(backend, prompt) {
 
 async function fetchLesson(langId, topicId) {
   const prompt = buildPrompt(langId, topicId);
-  // Fallback chain on 429: try each backend in order until one succeeds
-  const chain = BACKEND === "groq"       ? ["groq", "openrouter", "gemini"] :
-                BACKEND === "openrouter" ? ["openrouter", "gemini"] :
-                [BACKEND];
-  let r;
+  // Fallback chain on 429: try all backends in order, starting with the configured one
+  const ALL_BACKENDS = ["groq", "openrouter", "gemini"];
+  const chain = [BACKEND, ...ALL_BACKENDS.filter(b => b !== BACKEND)];
+  let r, d;
   for (const backend of chain) {
     r = await backendRequest(backend, prompt);
+    d = await r.json();
     if (r.status !== 429) break;
   }
-  const d = await r.json();
+  if (r.status === 429) throw new Error("All AI backends are rate-limited. Please wait a moment and try again.");
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const raw = d.choices?.[0]?.message?.content || "[]";
   let jsonStr = raw.replace(/```json|```/g, "").trim();
