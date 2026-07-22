@@ -24,3 +24,9 @@ app-release.apk
 *.jpeg
 *.jpg
 state.json
+
+# Added by ggshield
+.cache_ggshield
+
+silkroad_api_key.txt
+
