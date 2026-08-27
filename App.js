@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Animated, ActivityIndicator, StatusBar,
-  Platform, Dimensions, Pressable,
+  Platform, Dimensions, Pressable, TextInput, Share,
 } from "react-native";
 import * as Speech from "expo-speech";
 import * as Updates from "expo-updates";
@@ -21,8 +21,25 @@ const { width: SCREEN_W } = Dimensions.get("window");
 // EXPO_PUBLIC_LLM_BACKEND: "groq" (default) | "openrouter" | "gemini" | "local"
 const BACKEND = process.env.EXPO_PUBLIC_LLM_BACKEND || "groq";
 
+// Battle server (Cloudflare Worker + Durable Object, see worker/) — http(s) base URL,
+// converted to ws(s) for the live connection.
+const BATTLE_SERVER_URL = process.env.EXPO_PUBLIC_BATTLE_SERVER_URL || "";
+function battleHttpUrl(path) {
+  return `${BATTLE_SERVER_URL.replace(/\/$/, "")}${path}`;
+}
+function battleWsUrl(code) {
+  return `${BATTLE_SERVER_URL.replace(/\/$/, "").replace(/^http/, "ws")}/room/${code}`;
+}
+
 const HEARTS_MAX = 3;
 const XP_PER_CORRECT = 10;
+const POINTS_TARGETS = [50, 100, 150, 200];
+const TIME_OPTIONS = [
+  { label: "1 min", sec: 60 },
+  { label: "2 min", sec: 120 },
+  { label: "3 min", sec: 180 },
+  { label: "5 min", sec: 300 },
+];
 
 /* ─── Language Config ───────────────────────────────────────────────────── */
 const LANGS = [
@@ -145,13 +162,19 @@ Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts
 }
 
 function backendRequest(backend, prompt) {
+  // Model IDs verified live against each provider — all three of the previous
+  // ones (llama-3.3-70b-versatile, openai/gpt-oss-120b:free, gemini-2.0-flash)
+  // had been retired and returned 404s.
   const configs = {
-    groq:        { url: "https://api.groq.com/openai/v1/chat/completions",        key: process.env.EXPO_PUBLIC_GROQ_API_KEY,        model: "llama-3.3-70b-versatile" },
-    openrouter:  { url: "https://openrouter.ai/api/v1/chat/completions",          key: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY, model: "openai/gpt-oss-120b:free" },
-    gemini:      { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.EXPO_PUBLIC_GEMINI_API_KEY, model: "gemini-2.0-flash" },
+    // Smaller model on Groq: this account's on_demand tier caps at 8000 tokens
+    // per minute total (prompt + completion), which openai/gpt-oss-120b at
+    // max_tokens 8000 exceeds outright — 20b leaves enough headroom to fit.
+    groq:        { url: "https://api.groq.com/openai/v1/chat/completions",        key: process.env.EXPO_PUBLIC_GROQ_API_KEY,        model: "openai/gpt-oss-20b", maxTokens: 6500 },
+    openrouter:  { url: "https://openrouter.ai/api/v1/chat/completions",          key: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY, model: "google/gemma-4-31b-it:free" },
+    gemini:      { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: process.env.EXPO_PUBLIC_GEMINI_API_KEY, model: "gemini-3.6-flash" },
     local:       { url: "http://10.0.2.2:11434/v1/chat/completions",              key: "ollama",                                   model: "gemma4" },
   };
-  const { url, key, model } = configs[backend] || configs.openrouter;
+  const { url, key, model, maxTokens } = configs[backend] || configs.openrouter;
   return fetch(url, {
     method: "POST",
     headers: {
@@ -159,22 +182,32 @@ function backendRequest(backend, prompt) {
       "Authorization": `Bearer ${key}`,
       ...(backend === "openrouter" && { "HTTP-Referer": "https://silkroadduo.app", "X-Title": "SilkRoadDuo" }),
     },
-    body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({
+      model, max_tokens: maxTokens || 8000, messages: [{ role: "user", content: prompt }],
+      // groq's gpt-oss models spend part of max_tokens on hidden reasoning by
+      // default, which can eat into the budget for a long 20-exercise JSON
+      // array — keep that light so the actual output isn't truncated.
+      ...(backend === "groq" && { reasoning_effort: "low" }),
+    }),
   });
 }
 
 async function fetchLesson(langId, topicId) {
   const prompt = buildPrompt(langId, topicId);
-  // Fallback chain on 429: try all backends in order, starting with the configured one
+  // Fallback chain on rate/size limits: try all backends in order, starting with
+  // the configured one. 413 is included alongside 429 because Groq's free tier
+  // enforces a small rolling tokens-per-minute budget and rejects an
+  // over-budget request with 413 rather than 429.
   const ALL_BACKENDS = ["groq", "openrouter", "gemini"];
   const chain = [BACKEND, ...ALL_BACKENDS.filter(b => b !== BACKEND)];
+  const isRetryable = (status) => status === 429 || status === 413;
   let r, d;
   for (const backend of chain) {
     r = await backendRequest(backend, prompt);
     d = await r.json();
-    if (r.status !== 429) break;
+    if (!isRetryable(r.status)) break;
   }
-  if (r.status === 429) throw new Error("All AI backends are rate-limited. Please wait a moment and try again.");
+  if (isRetryable(r.status)) throw new Error("All AI backends are rate-limited. Please wait a moment and try again.");
   if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
   const raw = d.choices?.[0]?.message?.content || "[]";
   let jsonStr = raw.replace(/```json|```/g, "").trim();
@@ -787,8 +820,511 @@ function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales
 }
 
 
+/* ─── Battle Screen ─────────────────────────────────────────────────────── */
+// 1v1 remote battle over a Cloudflare Worker + Durable Object relay (see worker/).
+// Internal step machine: menu → create/join → lobby → live → result.
+// The DO is the authoritative referee — this screen renders whatever room_state /
+// game_over it broadcasts rather than deciding the outcome locally.
+function BattleScreen({ profile, stopTheme, resumeTheme, availableTtsLocales, onXpEarned, onExit }) {
+  const [step, setStep] = useState("menu");
+  const [role, setRole] = useState(null);
+  const [code, setCode] = useState("");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [selLang, setSelLang] = useState(null);
+  const [selTopic, setSelTopic] = useState(null);
+  const [modeType, setModeType] = useState("points");
+  const [pointsTarget, setPointsTarget] = useState(100);
+  const [durationSec, setDurationSec] = useState(120);
+  const [room, setRoom] = useState(null);
+  const [connError, setConnError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [exercises, setExercises] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [myScore, setMyScore] = useState(0);
+  const [myCorrect, setMyCorrect] = useState(0);
+  const [feedback, setFeedback] = useState(null);
+  const [gameOver, setGameOver] = useState(null);
+  const [xpApplied, setXpApplied] = useState(false);
+  const [startTimestamp, setStartTimestamp] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    if (step !== "live" || room?.mode?.type !== "time") return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [step, room?.mode?.type]);
+
+  const handleServerMessage = useCallback((msg) => {
+    if (msg.type === "room_state") {
+      setRoom(msg);
+      setStep((prev) => (prev === "create" || prev === "join" ? "lobby" : prev));
+    } else if (msg.type === "start") {
+      setExercises(msg.exercises || []);
+      setIdx(0);
+      setMyScore(0);
+      setMyCorrect(0);
+      setFeedback(null);
+      setGameOver(null);
+      setXpApplied(false);
+      setStartTimestamp(msg.startTimestamp);
+      // The guest never picked a language/topic — take it from the host via the
+      // server broadcast so both sides render exercises with the right lang config.
+      if (msg.langId) {
+        const lang = LANGS.find((l) => l.id === msg.langId);
+        if (lang) setSelLang(lang);
+      }
+      setSelTopic(msg.topicId ?? null);
+      setStep("live");
+      stopTheme();
+    } else if (msg.type === "game_over") {
+      setGameOver(msg);
+      setStep("result");
+    } else if (msg.type === "error") {
+      setConnError(msg.message);
+    }
+  }, [stopTheme]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        wsRef.current?.send(JSON.stringify({ type: "leave" }));
+        wsRef.current?.close();
+      } catch (_) {}
+    };
+  }, []);
+
+  const connect = (roleArg, codeArg) => new Promise((resolve, reject) => {
+    let settled = false;
+    let ws;
+    try {
+      ws = new WebSocket(battleWsUrl(codeArg));
+    } catch (e) {
+      reject(new Error("Could not reach the battle server."));
+      return;
+    }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: "join", role: roleArg,
+        name: profile?.name || "Player",
+        avatar: profile?.avatar || "🙂",
+        color: profile?.color || "#58CC02",
+      }));
+    };
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (_) { return; }
+      handleServerMessage(msg);
+      if (!settled && msg.type === "room_state") { settled = true; resolve(ws); }
+      if (!settled && msg.type === "error") { settled = true; reject(new Error(msg.message)); }
+    };
+    ws.onerror = () => { if (!settled) { settled = true; reject(new Error("Connection failed.")); } };
+    ws.onclose = () => { wsRef.current = null; };
+  });
+
+  const handleCreateRoom = async () => {
+    setBusy(true); setConnError(null);
+    try {
+      const res = await fetch(battleHttpUrl("/room"), { method: "POST" });
+      if (!res.ok) throw new Error("Battle server unavailable.");
+      const data = await res.json();
+      const ws = await connect("host", data.code);
+      wsRef.current = ws;
+      setRole("host"); setCode(data.code); setStep("lobby");
+      ws.send(JSON.stringify({
+        type: "set_mode",
+        mode: modeType === "points" ? { type: "points", target: pointsTarget } : { type: "time", durationSec },
+      }));
+    } catch (e) {
+      setConnError(e.message || "Could not create room.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleJoinRoom = async () => {
+    const codeArg = joinCodeInput.trim().toUpperCase();
+    if (codeArg.length < 4) { setConnError("Enter a valid room code."); return; }
+    setBusy(true); setConnError(null);
+    try {
+      const ws = await connect("guest", codeArg);
+      wsRef.current = ws;
+      setRole("guest"); setCode(codeArg); setStep("lobby");
+    } catch (e) {
+      setConnError(e.message || "Could not join room.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleStartBattle = async () => {
+    setBusy(true); setConnError(null);
+    try {
+      const exs = await fetchLesson(selLang.id, selTopic);
+      if (!Array.isArray(exs) || exs.length === 0) throw new Error("empty");
+      wsRef.current?.send(JSON.stringify({ type: "start_exercises", exercises: exs, langId: selLang.id, topicId: selTopic }));
+    } catch (e) {
+      setConnError(e.message || "Could not generate the lesson.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendScore = (score, correct) => {
+    wsRef.current?.send(JSON.stringify({ type: "score_update", score, correct, idx }));
+  };
+
+  const handleAnswer = (correct) => {
+    if (feedback) return;
+    const ex = exercises[idx];
+    if (correct) {
+      const newScore = myScore + XP_PER_CORRECT, newCorrect = myCorrect + 1;
+      setMyScore(newScore); setMyCorrect(newCorrect);
+      setFeedback({ correct: true, funFact: ex.fun_fact || null });
+      sendScore(newScore, newCorrect);
+    } else {
+      setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" ")) });
+      sendScore(myScore, myCorrect);
+    }
+  };
+
+  const handleMatchComplete = () => {
+    if (feedback) return;
+    const newScore = myScore + XP_PER_CORRECT, newCorrect = myCorrect + 1;
+    setMyScore(newScore); setMyCorrect(newCorrect);
+    setFeedback({ correct: true, funFact: "Matching pairs builds deep vocabulary recall!" });
+    sendScore(newScore, newCorrect);
+  };
+
+  const handleContinue = () => {
+    setFeedback(null);
+    if (idx + 1 < exercises.length) setIdx(i => i + 1);
+  };
+
+  const handleShareCode = () => {
+    Share.share({ message: `Join my Silk Road Duo battle! Room code: ${code}` }).catch(() => {});
+  };
+
+  const resetToMenu = () => {
+    try { wsRef.current?.send(JSON.stringify({ type: "leave" })); wsRef.current?.close(); } catch (_) {}
+    wsRef.current = null;
+    setStep("menu"); setRole(null); setCode(""); setJoinCodeInput("");
+    setRoom(null); setConnError(null); setExercises([]); setGameOver(null);
+    resumeTheme();
+  };
+
+  const handleExit = () => {
+    resetToMenu();
+    onExit();
+  };
+
+  // Award XP/streak/achievements exactly once, as soon as the match ends — regardless
+  // of whether the player stays on the result screen or backs out immediately.
+  useEffect(() => {
+    if (step === "result" && gameOver && !xpApplied) {
+      setXpApplied(true);
+      onXpEarned({
+        correctCount: myCorrect, xp: myScore,
+        isPerfect: exercises.length > 0 && myCorrect === exercises.length,
+        total: exercises.length, langId: selLang?.id,
+      });
+    }
+  }, [step, gameOver, xpApplied, myCorrect, myScore, exercises.length, selLang, onXpEarned]);
+
+  const my = role === "host" ? room?.players?.host : room?.players?.guest;
+  const opp = role === "host" ? room?.players?.guest : room?.players?.host;
+  const iWon = gameOver && gameOver.winner === role;
+  const isDraw = gameOver && gameOver.winner === null;
+
+  /* ── menu ── */
+  if (step === "menu") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <StatusBar barStyle="dark-content" />
+        <View style={[styles.topicHeader, { backgroundColor: "#FF4B4B" }]}>
+          <TouchableOpacity onPress={onExit} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>←</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={styles.topicHeaderTitle}>⚔️ Battle Mode</Text>
+            <Text style={styles.topicHeaderSub}>Race a friend to the finish</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ padding: 20, gap: 14 }}>
+          {connError && <Text style={styles.errorText}>{connError}</Text>}
+          <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: "#FF4B4B", borderBottomColor: "#CC1111" }]}
+            onPress={() => { setConnError(null); setStep("create"); }} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>Create Battle</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn}
+            onPress={() => { setConnError(null); setStep("join"); }} activeOpacity={0.85}>
+            <Text style={styles.secondaryBtnText}>Join Battle</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ── create (host: pick language, topic, win condition) ── */
+  if (step === "create") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <StatusBar barStyle="dark-content" />
+        <View style={[styles.topicHeader, { backgroundColor: "#FF4B4B" }]}>
+          <TouchableOpacity onPress={() => setStep("menu")} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>←</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={styles.topicHeaderTitle}>Create Battle</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 20 }}>
+          {connError && <Text style={styles.errorText}>{connError}</Text>}
+
+          <View>
+            <Text style={styles.sectionLabel}>LANGUAGE</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+              {LANGS.map((lang) => (
+                <TouchableOpacity key={lang.id}
+                  style={[styles.choiceChip, selLang?.id === lang.id && { backgroundColor: lang.color, borderColor: lang.color }]}
+                  onPress={() => setSelLang(lang)} activeOpacity={0.8}>
+                  <Text style={[styles.choiceChipText, selLang?.id === lang.id && { color: "#fff" }]}>{lang.emoji} {lang.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View>
+            <Text style={styles.sectionLabel}>TOPIC</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.choiceChip, selTopic === null && { backgroundColor: "#3C3C3C", borderColor: "#3C3C3C" }]}
+                onPress={() => setSelTopic(null)} activeOpacity={0.8}>
+                <Text style={[styles.choiceChipText, selTopic === null && { color: "#fff" }]}>🎲 Random</Text>
+              </TouchableOpacity>
+              {TOPICS.map((topic) => (
+                <TouchableOpacity key={topic.id}
+                  style={[styles.choiceChip, selTopic === topic.id && { backgroundColor: "#3C3C3C", borderColor: "#3C3C3C" }]}
+                  onPress={() => setSelTopic(topic.id)} activeOpacity={0.8}>
+                  <Text style={[styles.choiceChipText, selTopic === topic.id && { color: "#fff" }]}>{topic.emoji} {topic.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View>
+            <Text style={styles.sectionLabel}>WIN CONDITION</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+              <TouchableOpacity style={[styles.modeTab, modeType === "points" && styles.modeTabActive]}
+                onPress={() => setModeType("points")} activeOpacity={0.8}>
+                <Text style={[styles.modeTabText, modeType === "points" && styles.modeTabTextActive]}>🎯 Target Points</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modeTab, modeType === "time" && styles.modeTabActive]}
+                onPress={() => setModeType("time")} activeOpacity={0.8}>
+                <Text style={[styles.modeTabText, modeType === "time" && styles.modeTabTextActive]}>⏱️ Time Limit</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              {modeType === "points" ? POINTS_TARGETS.map((t) => (
+                <TouchableOpacity key={t} style={[styles.choiceChip, pointsTarget === t && { backgroundColor: "#FF4B4B", borderColor: "#FF4B4B" }]}
+                  onPress={() => setPointsTarget(t)} activeOpacity={0.8}>
+                  <Text style={[styles.choiceChipText, pointsTarget === t && { color: "#fff" }]}>{t} pts</Text>
+                </TouchableOpacity>
+              )) : TIME_OPTIONS.map((t) => (
+                <TouchableOpacity key={t.sec} style={[styles.choiceChip, durationSec === t.sec && { backgroundColor: "#FF4B4B", borderColor: "#FF4B4B" }]}
+                  onPress={() => setDurationSec(t.sec)} activeOpacity={0.8}>
+                  <Text style={[styles.choiceChipText, durationSec === t.sec && { color: "#fff" }]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#FF4B4B", borderBottomColor: "#CC1111" }, (!selLang || busy) && { opacity: 0.5 }]}
+            onPress={handleCreateRoom} disabled={!selLang || busy} activeOpacity={0.85}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create Room</Text>}
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  /* ── join (guest: enter a code) ── */
+  if (step === "join") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <StatusBar barStyle="dark-content" />
+        <View style={[styles.topicHeader, { backgroundColor: "#FF4B4B" }]}>
+          <TouchableOpacity onPress={() => setStep("menu")} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>←</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={styles.topicHeaderTitle}>Join Battle</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ padding: 20, gap: 16 }}>
+          {connError && <Text style={styles.errorText}>{connError}</Text>}
+          <Text style={styles.sectionLabel}>ROOM CODE</Text>
+          <TextInput
+            value={joinCodeInput}
+            onChangeText={(t) => setJoinCodeInput(t.toUpperCase())}
+            placeholder="ABCDE"
+            placeholderTextColor="#CCC"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={8}
+            style={styles.codeInput}
+          />
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: "#FF4B4B", borderBottomColor: "#CC1111" }, busy && { opacity: 0.5 }]}
+            onPress={handleJoinRoom} disabled={busy} activeOpacity={0.85}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Join</Text>}
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ── lobby (waiting to start) ── */
+  if (step === "lobby") {
+    const bothConnected = room?.players?.host?.connected && room?.players?.guest?.connected;
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+        <StatusBar barStyle="dark-content" />
+        <View style={{ flex: 1, padding: 24, alignItems: "center", justifyContent: "center", gap: 20 }}>
+          {connError && <Text style={styles.errorText}>{connError}</Text>}
+          {role === "host" && (
+            <TouchableOpacity onPress={handleShareCode} style={styles.codeDisplay} activeOpacity={0.8}>
+              <Text style={styles.codeDisplayLabel}>ROOM CODE · TAP TO SHARE</Text>
+              <Text style={styles.codeDisplayText}>{code}</Text>
+            </TouchableOpacity>
+          )}
+          <View style={{ flexDirection: "row", gap: 24 }}>
+            {["host", "guest"].map((r) => {
+              const p = room?.players?.[r];
+              return (
+                <View key={r} style={{ alignItems: "center", opacity: p?.connected ? 1 : 0.35 }}>
+                  <Text style={{ fontSize: 36 }}>{p?.connected ? (p.avatar || "🙂") : "❔"}</Text>
+                  <Text style={{ fontWeight: "800", color: "#3C3C3C", marginTop: 4 }}>{p?.connected ? p.name : "Waiting…"}</Text>
+                </View>
+              );
+            })}
+          </View>
+          {room && (
+            <Text style={{ color: "#AFAFAF", fontWeight: "700" }}>
+              {room.mode.type === "points" ? `First to ${room.mode.target} points` : `${Math.round(room.mode.durationSec / 60)} min · highest score wins`}
+            </Text>
+          )}
+          {role === "host" ? (
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: "#58CC02", borderBottomColor: "#46A302", width: "100%" }, (!bothConnected || busy) && { opacity: 0.5 }]}
+              onPress={handleStartBattle} disabled={!bothConnected || busy} activeOpacity={0.85}>
+              {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{bothConnected ? "Start Battle" : "Waiting for opponent…"}</Text>}
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ color: "#AFAFAF", fontWeight: "700" }}>Waiting for the host to start…</Text>
+          )}
+          <TouchableOpacity onPress={handleExit}><Text style={{ color: "#AFAFAF", fontWeight: "700" }}>Cancel</Text></TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* ── live (answering exercises) ── */
+  if (step === "live") {
+    const ex = exercises[idx];
+    const isPoints = room?.mode?.type === "points";
+    const sharedMax = isPoints ? room.mode.target : Math.max(myScore, opp?.score || 0, 10);
+    const remainingSec = !isPoints && startTimestamp
+      ? Math.max(0, Math.ceil((startTimestamp + room.mode.durationSec * 1000 - now) / 1000))
+      : null;
+    return (
+      <SafeAreaView style={styles.lessonScreen}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={handleExit} style={styles.quitBtn}>
+            <Text style={styles.quitBtnText}>✕</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1, gap: 4 }}>
+            <ProgressBar current={myScore} total={sharedMax} color={selLang?.color || "#58CC02"} />
+            <ProgressBar current={opp?.score || 0} total={sharedMax} color="#AFAFAF" />
+          </View>
+          {remainingSec !== null && (
+            <Text style={{ fontSize: 15, fontWeight: "900", color: remainingSec <= 10 ? "#FF4B4B" : "#3C3C3C" }}>
+              {Math.floor(remainingSec / 60)}:{String(remainingSec % 60).padStart(2, "0")}
+            </Text>
+          )}
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: "800", color: selLang?.color || "#58CC02" }}>You: ⚡ {myScore}{isPoints ? ` / ${room.mode.target}` : ""}</Text>
+          <Text style={{ fontSize: 13, fontWeight: "800", color: "#AFAFAF" }}>{opp?.name || "Opponent"}: ⚡ {opp?.score || 0}</Text>
+        </View>
+
+        {ex ? (
+          <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: feedback ? 200 : 24 }}>
+            <Text style={styles.exerciseLabel}>
+              {{ mcq: ex.direction === "target_to_en" ? "What does this mean?" : "How do you say this?", fillblank: "Fill in the blank", match: "Match the pairs", wordarrange: "Arrange the words" }[ex.type] || "Complete the exercise"}
+            </Text>
+            {ex.type === "mcq" && <ExerciseMCQ key={idx} ex={ex} lang={selLang} onAnswer={handleAnswer} disabled={!!feedback} availableTtsLocales={availableTtsLocales} />}
+            {ex.type === "fillblank" && <ExerciseFillBlank key={idx} ex={ex} lang={selLang} onAnswer={handleAnswer} disabled={!!feedback} />}
+            {ex.type === "match" && <ExerciseMatch key={idx} ex={ex} lang={selLang} onComplete={handleMatchComplete} />}
+            {ex.type === "wordarrange" && <ExerciseWordArrange key={idx} ex={ex} lang={selLang} onAnswer={handleAnswer} disabled={!!feedback} />}
+          </ScrollView>
+        ) : (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <Text style={{ fontSize: 40 }}>⏳</Text>
+            <Text style={{ marginTop: 12, fontWeight: "800", color: "#3C3C3C", textAlign: "center" }}>
+              You've answered every exercise — waiting for the match to end…
+            </Text>
+          </View>
+        )}
+
+        {feedback && (
+          <FeedbackBar correct={feedback.correct} funFact={feedback.funFact}
+            onContinue={handleContinue} lang={selLang} correctAnswer={feedback.correctAnswer} />
+        )}
+      </SafeAreaView>
+    );
+  }
+
+  /* ── result ── */
+  return (
+    <SafeAreaView style={styles.resultScreen}>
+      <StatusBar barStyle="dark-content" />
+      <Text style={{ fontSize: 80 }}>{isDraw ? "🤝" : iWon ? "🏆" : "😅"}</Text>
+      <Text style={styles.resultTitle}>{isDraw ? "It's a draw!" : iWon ? "Victory!" : "Good effort!"}</Text>
+      <Text style={styles.resultSubtitle}>
+        {gameOver?.reason === "forfeit" ? "Opponent disconnected" : gameOver?.reason === "time_up" ? "Time's up" : "Target reached"}
+      </Text>
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Text style={{ fontSize: 22 }}>{profile?.avatar || "🙂"}</Text>
+          <Text style={[styles.statValue, { color: selLang?.color || "#58CC02" }]}>{my?.score ?? myScore}</Text>
+          <Text style={styles.statLabel}>You</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={{ fontSize: 22 }}>{opp?.avatar || "🙂"}</Text>
+          <Text style={[styles.statValue, { color: "#AFAFAF" }]}>{opp?.score ?? 0}</Text>
+          <Text style={styles.statLabel}>{opp?.name || "Opponent"}</Text>
+        </View>
+      </View>
+      <View style={{ gap: 12, width: "100%" }}>
+        <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: "#FF4B4B", borderBottomColor: "#CC1111" }]} onPress={resetToMenu} activeOpacity={0.85}>
+          <Text style={styles.primaryBtnText}>Battle Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryBtn} onPress={handleExit} activeOpacity={0.85}>
+          <Text style={styles.secondaryBtnText}>Back to Home</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 /* ─── Home Screen ───────────────────────────────────────────────────────── */
-function HomeScreen({ onSelect, stats, onAchievements, profile, onSwitchProfile }) {
+function HomeScreen({ onSelect, stats, onAchievements, onBattle, profile, onSwitchProfile }) {
   const dailyTip = CULTURAL_TIPS[new Date().getDate() % CULTURAL_TIPS.length];
   const unlockedCount = ACHIEVEMENTS.filter(a => a.check(stats)).length;
 
@@ -853,6 +1389,16 @@ function HomeScreen({ onSelect, stats, onAchievements, profile, onSwitchProfile 
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.achieveBtnTitle}>Achievements</Text>
             <Text style={styles.achieveBtnSub}>{unlockedCount} of {ACHIEVEMENTS.length} unlocked</Text>
+          </View>
+          <Text style={styles.langArrowText}>→</Text>
+        </TouchableOpacity>
+
+        {/* Battle button */}
+        <TouchableOpacity style={[styles.achieveBtn, { marginTop: 10 }]} onPress={onBattle} activeOpacity={0.8}>
+          <Text style={{ fontSize: 22 }}>⚔️</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.achieveBtnTitle}>Battle Mode</Text>
+            <Text style={styles.achieveBtnSub}>Race a friend to the finish</Text>
           </View>
           <Text style={styles.langArrowText}>→</Text>
         </TouchableOpacity>
@@ -1067,7 +1613,9 @@ export default function App() {
     }
   };
 
-  const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect }) => {
+  // Shared by solo lessons and battle matches: updates XP/streak/achievements and
+  // persists to the active profile. Returns the newly-unlocked achievements.
+  const applyProgress = useCallback(({ xp, isPerfect, langId }) => {
     const { streak, lastActiveDate } = bumpStreak(stats.streak, stats.lastActiveDate);
     const newStats = {
       ...stats,
@@ -1076,7 +1624,7 @@ export default function App() {
       perfectLessons: stats.perfectLessons + (isPerfect ? 1 : 0),
       streak,
       lastActiveDate,
-      [activeLang.id + "_xp"]: (stats[activeLang.id + "_xp"] || 0) + xp,
+      [langId + "_xp"]: (stats[langId + "_xp"] || 0) + xp,
     };
     const prevUnlocked = new Set(ACHIEVEMENTS.filter(a => a.check(stats)).map(a => a.id));
     const newAchievements = ACHIEVEMENTS.filter(a => a.check(newStats) && !prevUnlocked.has(a.id));
@@ -1100,9 +1648,18 @@ export default function App() {
         achievements: newAchievementIds,
       }).catch((err) => console.warn("[profiles] persist failed:", err));
     }
+    return newAchievements;
+  }, [stats, activeProfileId, activeProfile]);
+
+  const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect }) => {
+    const newAchievements = applyProgress({ xp, isPerfect, langId: activeLang.id });
     setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
     setScreen("result");
-  }, [stats, activeLang, exercises, activeProfileId, activeProfile]);
+  }, [applyProgress, activeLang, exercises]);
+
+  const handleBattleXpEarned = useCallback(({ xp, isPerfect, langId }) => {
+    if (langId) applyProgress({ xp, isPerfect, langId });
+  }, [applyProgress]);
 
   if (!fontsLoaded) return null;
 
@@ -1166,8 +1723,19 @@ export default function App() {
             onSelect={(lang) => { setActiveLang(lang); setScreen("topic"); }}
             stats={stats}
             onAchievements={() => setScreen("achievements")}
+            onBattle={() => setScreen("battle")}
             profile={activeProfile}
             onSwitchProfile={() => setShowProfilePicker(true)}
+          />
+        )}
+        {screen === "battle" && (
+          <BattleScreen
+            profile={activeProfile}
+            stopTheme={stopTheme}
+            resumeTheme={resumeTheme}
+            availableTtsLocales={availableTtsLocales}
+            onXpEarned={handleBattleXpEarned}
+            onExit={() => { setScreen("home"); resumeTheme(); }}
           />
         )}
         {screen === "topic" && activeLang && (
@@ -1352,5 +1920,20 @@ const styles = StyleSheet.create({
 
   speakBtn: { position: "absolute", top: 10, right: 10, padding: 6 },
   speakBtnText: { fontSize: 22 },
+
+  // Battle screen
+  choiceChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 14, borderWidth: 2, borderColor: "#E5E5E5", backgroundColor: "#fff" },
+  choiceChipText: { fontSize: 13, fontWeight: "800", color: "#3C3C3C" },
+  modeTab: { flex: 1, padding: 12, borderRadius: 14, borderWidth: 2, borderColor: "#E5E5E5", backgroundColor: "#fff", alignItems: "center" },
+  modeTabActive: { backgroundColor: "#3C3C3C", borderColor: "#3C3C3C" },
+  modeTabText: { fontSize: 14, fontWeight: "800", color: "#3C3C3C" },
+  modeTabTextActive: { color: "#fff" },
+  codeInput: {
+    borderWidth: 2, borderColor: "#E5E5E5", borderRadius: 16, padding: 16,
+    fontSize: 24, fontWeight: "900", letterSpacing: 4, textAlign: "center", color: "#3C3C3C",
+  },
+  codeDisplay: { alignItems: "center", backgroundColor: "#F7F7F7", borderRadius: 20, borderWidth: 2, borderColor: "#E5E5E5", padding: 20, paddingHorizontal: 32 },
+  codeDisplayLabel: { fontSize: 11, fontWeight: "900", color: "#AFAFAF", letterSpacing: 1.5, marginBottom: 6 },
+  codeDisplayText: { fontSize: 36, fontWeight: "900", color: "#3C3C3C", letterSpacing: 6 },
 });
 
