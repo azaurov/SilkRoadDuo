@@ -40,6 +40,10 @@ jobs:
           additional_permissions: |
             actions: read
 
+          # Temporary: surface the real error from the SDK while debugging the
+          # is_error:true / 0-cost / 1-turn failure on issue #12's run.
+          show_full_output: true
+
           # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
           # prompt: 'Update the pull request description to include a summary of changes.'
 

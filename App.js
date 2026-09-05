@@ -156,9 +156,9 @@ MATCH (4 pairs): {"type":"match","pairs":[{"target":"<romanized>","english":"<me
 
 FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ blank>","correct_target":"<target word romanized>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"]}
 
-WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<word1>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
+WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<romanized target-language word, NEVER English>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
 
-Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE words should be 4-5 romanized target-language words that form a simple sentence.`;
+Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
 }
 
 function backendRequest(backend, prompt) {
@@ -228,7 +228,20 @@ async function fetchLesson(langId, topicId) {
   }
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
   const norm = s => (s || "").normalize("NFC").replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").trim().toLowerCase();
-  return exercises.map(ex => {
+  return exercises.filter(ex => {
+    // Drop wordarrange exercises where the AI put English words in the bank
+    // instead of romanized target-language words (every bank word literally
+    // appears in the English sentence), or where correct_order doesn't use
+    // the same words as the bank.
+    if (ex.type === "wordarrange" && ex.words && ex.english) {
+      const englishWords = new Set(ex.english.toLowerCase().match(/[a-z']+/g) || []);
+      const allWordsAreEnglish = ex.words.every(w => englishWords.has(norm(w)));
+      const orderMatchesBank = ex.correct_order && ex.correct_order.length === ex.words.length
+        && ex.correct_order.every(w => ex.words.includes(w));
+      if (allWordsAreEnglish || !orderMatchesBank) return false;
+    }
+    return true;
+  }).map(ex => {
     if (ex.type === "mcq" && ex.options) {
       const match = ex.options.find(o => norm(o) === norm(ex.correct));
       if (match) ex.correct = match;
@@ -1821,7 +1834,7 @@ const styles = StyleSheet.create({
   },
   feedbackTitle: { fontSize: 18, fontWeight: "900" },
   feedbackAnswer: { fontSize: 16, fontWeight: "700", color: "#3C3C3C", marginTop: 2 },
-  funFact: { fontSize: 13, color: "#3C3C3C", opacity: 0.75, marginBottom: 12, lineHeight: 18 },
+  funFact: { fontSize: 13, color: "#3C3C3C", opacity: 0.75, marginBottom: 12, lineHeight: 18, textAlign: "left", writingDirection: "ltr" },
   continueBtn: { padding: 16, borderRadius: 16, alignItems: "center", borderBottomWidth: 4 },
   continueBtnText: { color: "#fff", fontSize: 17, fontWeight: "900", letterSpacing: 0.5 },
 
