@@ -243,8 +243,15 @@ async function fetchLesson(langId, topicId) {
     return true;
   }).map(ex => {
     if (ex.type === "mcq" && ex.options) {
+      // The AI echoes the word's meaning in two places: "english" (or "word" for
+      // the reverse direction) and "correct". These occasionally disagree — e.g.
+      // Hebrew שעה ("hour") generated with correct:"minute" while its own
+      // fun_fact still described it as "hour" — so prefer the option matching
+      // the authoritative meaning field over a possibly-hallucinated "correct".
+      const authoritative = ex.direction === "target_to_en" ? ex.english : ex.word;
+      const authMatch = authoritative && ex.options.find(o => norm(o) === norm(authoritative));
       const match = ex.options.find(o => norm(o) === norm(ex.correct));
-      if (match) ex.correct = match;
+      ex.correct = authMatch || match || ex.correct;
     }
     if (ex.type === "fillblank" && ex.options) {
       const match = ex.options.find(o => norm(o) === norm(ex.correct_target));
