@@ -144,7 +144,7 @@ function buildPrompt(langId, topicId, personalization) {
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
     uzbek: "Uzbek (modern Latin-script Uzbek)",
     hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
-    aramaic: "Aramaic (Classical/Syriac, use romanized transliteration)",
+    aramaic: "Aramaic (Classical/Syriac, romanized transliteration only for both word and word_native — do NOT output Syriac script)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
   const difficulty = personalization?.difficulty || "beginner";
@@ -236,8 +236,12 @@ async function fetchLesson(langId, topicId, personalization) {
     const lastComma = jsonStr.lastIndexOf(",");
     exercises = lastComma > 0 ? JSON.parse(jsonStr.slice(0, lastComma) + "]") : [];
   }
-  // Sogdian ancient script cannot be shaped by Android's HarfBuzz; use romanized only
-  if (langId === "sogdian") {
+  // Sogdian ancient script cannot be shaped by Android's HarfBuzz; use romanized only.
+  // Aramaic is romanized by design too, but the AI fills word_native with real Syriac
+  // script anyway (the prompt hint alone doesn't stop it) — different vocabulary items
+  // sharing a Semitic root then render as near-identical, hard-to-distinguish glyphs
+  // in the MCQ prompt card, defeating the exercise.
+  if (langId === "sogdian" || langId === "aramaic") {
     exercises.forEach(ex => { delete ex.word_native; });
   }
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
