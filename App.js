@@ -798,12 +798,17 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
         forceRender((n) => n + 1);
       },
       onPanResponderRelease: () => {
+        // Snapshot before clearing: setPaths's updater can run after this
+        // function returns, by which point currentPath.current would already
+        // be "" — reading the ref inside the updater silently pushed empty
+        // strings (paths.length grew, but every path was invisible/empty).
+        const finished = currentPath.current;
+        currentPath.current = "";
         // Require at least one actual line segment — a bare tap (grant with
         // no move) would otherwise push an invisible zero-length "traced" path.
-        if (currentPath.current.includes("L")) {
-          setPaths((prev) => [...prev, currentPath.current]);
+        if (finished.includes("L")) {
+          setPaths((prev) => [...prev, finished]);
         }
-        currentPath.current = "";
         forceRender((n) => n + 1);
       },
     })
