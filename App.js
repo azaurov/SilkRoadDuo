@@ -174,6 +174,36 @@ WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<rom
 Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
 }
 
+// LLM output is sometimes almost-JSON rather than JSON: raw control
+// characters left unescaped inside string values ("U+0000 thru U+001F is
+// not allowed in string"), a dangling trailing comma before a closing
+// bracket, or the response getting cut off mid-element on hitting the
+// token limit. The previous version's truncation-recovery re-parse wasn't
+// itself wrapped in a try/catch, so when *that* also failed, the raw
+// JSON.parse error message (e.g. "Unexpected character: ]") propagated
+// uncaught all the way into the UI instead of being handled.
+function parseExercisesJson(raw) {
+  const cleaned = raw
+    .replace(/[\u0000-\u001F]/g, " ")   // unescaped control chars inside strings
+    .replace(/,\s*([\]}])/g, "$1");     // dangling trailing comma
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Still broken — likely truncated mid-element (hit the token limit
+    // while writing an exercise). Cut back to the last complete "}," —
+    // the end of a fully-closed element — rather than the last comma
+    // anywhere, since exercises can contain nested arrays/objects (e.g.
+    // match's "pairs") whose internal commas aren't top-level boundaries.
+    const lastObjEnd = cleaned.lastIndexOf("},");
+    if (lastObjEnd > 0) {
+      try {
+        return JSON.parse(cleaned.slice(0, lastObjEnd + 1) + "]");
+      } catch {}
+    }
+    return [];
+  }
+}
+
 function backendRequest(backend, prompt) {
   // Model IDs verified live against each provider — all three of the previous
   // ones (llama-3.3-70b-versatile, openai/gpt-oss-120b:free, gemini-2.0-flash)
@@ -230,14 +260,7 @@ async function fetchLesson(langId, topicId, personalization) {
   const start = jsonStr.indexOf("[");
   const end = jsonStr.lastIndexOf("]");
   if (start !== -1 && end > start) jsonStr = jsonStr.slice(start, end + 1);
-  let exercises;
-  try {
-    exercises = JSON.parse(jsonStr);
-  } catch {
-    // Response truncated mid-array — drop the incomplete last element
-    const lastComma = jsonStr.lastIndexOf(",");
-    exercises = lastComma > 0 ? JSON.parse(jsonStr.slice(0, lastComma) + "]") : [];
-  }
+  const exercises = parseExercisesJson(jsonStr);
   // Sogdian ancient script cannot be shaped by Android's HarfBuzz; use romanized only.
   // Aramaic is romanized by design too, but the AI fills word_native with real Syriac
   // script anyway (the prompt hint alone doesn't stop it) — different vocabulary items
