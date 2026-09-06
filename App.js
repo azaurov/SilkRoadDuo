@@ -12,9 +12,11 @@ import { useFonts } from "expo-font";
 import {
   loadProfiles, loadActiveId, saveActiveId,
   deleteProfile as deleteProfileStore,
-  updateProfileAtomic, bumpStreak,
+  updateProfileAtomic, bumpStreak, upsertProfileFromBackup,
 } from "./assets/lib/profiles";
 import { ProfileSelectScreen, ProfileCreateScreen, ProfileSwitcherModal } from "./assets/lib/profiles_ui";
+import { recordAnswers, getPersonalization, itemKeyFor } from "./assets/lib/learning";
+import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -134,7 +136,7 @@ const CULTURAL_TIPS = [
 ];
 
 /* ─── AI Helpers ────────────────────────────────────────────────────────── */
-function buildPrompt(langId, topicId) {
+function buildPrompt(langId, topicId, personalization) {
   const names = {
     bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
     farsi: "Farsi (Persian)",
@@ -145,7 +147,16 @@ function buildPrompt(langId, topicId) {
     aramaic: "Aramaic (Classical/Syriac, use romanized transliteration)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
-  return `You are an expert ${names[langId]} language teacher. Generate a beginner lesson of exactly 20 exercises.${topicHint}
+  const difficulty = personalization?.difficulty || "beginner";
+  const difficultyHint = {
+    beginner: "Keep vocabulary common and sentences short and simple.",
+    intermediate: "Use moderately varied vocabulary and slightly longer sentences than a total beginner would see.",
+    advanced: "Use richer vocabulary, idioms, and more complex sentence structures — this learner is doing well.",
+  }[difficulty];
+  const weakWords = personalization?.weakWords?.length
+    ? ` This learner has previously struggled with these words/phrases — naturally reinforce at least 2-3 of them if they fit the topic: ${personalization.weakWords.slice(0, 8).join(", ")}.`
+    : "";
+  return `You are an expert ${names[langId]} language teacher. Generate a lesson of exactly 20 exercises for a learner at the ${difficulty} level. ${difficultyHint}${topicHint}${weakWords}
 Return ONLY a valid JSON array, no markdown fences, no explanation.
 
 Use these types in order: mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, wordarrange
@@ -192,23 +203,26 @@ function backendRequest(backend, prompt) {
   });
 }
 
-async function fetchLesson(langId, topicId) {
-  const prompt = buildPrompt(langId, topicId);
-  // Fallback chain on rate/size limits: try all backends in order, starting with
-  // the configured one. 413 is included alongside 429 because Groq's free tier
-  // enforces a small rolling tokens-per-minute budget and rejects an
-  // over-budget request with 413 rather than 429.
+async function fetchLesson(langId, topicId, personalization) {
+  const prompt = buildPrompt(langId, topicId, personalization);
+  // Fallback chain: try all backends in order, starting with the configured
+  // one, and fall through to the next on ANY failure (rate/size limits, a
+  // retired or misnamed model returning 404, a transient 5xx, ...) — one
+  // backend erroring must never surface as fatal while the others are fine.
   const ALL_BACKENDS = ["groq", "openrouter", "gemini"];
   const chain = [BACKEND, ...ALL_BACKENDS.filter(b => b !== BACKEND)];
-  const isRetryable = (status) => status === 429 || status === 413;
   let r, d;
   for (const backend of chain) {
     r = await backendRequest(backend, prompt);
     d = await r.json();
-    if (!isRetryable(r.status)) break;
+    if (r.ok && !d.error) break;
   }
-  if (isRetryable(r.status)) throw new Error("All AI backends are rate-limited. Please wait a moment and try again.");
-  if (!r.ok || d.error) throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
+  if (!r.ok || d.error) {
+    if (r.status === 429 || r.status === 413) {
+      throw new Error("All AI backends are rate-limited. Please wait a moment and try again.");
+    }
+    throw new Error(`${r.status}: ${d.error?.message || JSON.stringify(d)}`);
+  }
   const raw = d.choices?.[0]?.message?.content || "[]";
   let jsonStr = raw.replace(/```json|```/g, "").trim();
   const start = jsonStr.indexOf("[");
@@ -751,17 +765,24 @@ function AchievementsScreen({ stats, onBack }) {
 }
 
 /* ─── Lesson Screen ─────────────────────────────────────────────────────── */
-function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales }) {
+function LessonScreen({ lang, topicId, exercises, onComplete, onQuit, availableTtsLocales }) {
   const [idx, setIdx] = useState(0);
   const [hearts, setHearts] = useState(HEARTS_MAX);
   const [xp, setXp] = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [isPerfect, setIsPerfect] = useState(true);
+  const answersRef = useRef([]);
 
   const ex = exercises[idx];
 
+  const logAnswer = (correct) => {
+    const item = itemKeyFor(ex);
+    if (item != null) answersRef.current.push({ type: ex.type, item, correct });
+  };
+
   const handleAnswer = useCallback((correct, answer) => {
+    logAnswer(correct);
     if (correct) {
       setXp(x => x + XP_PER_CORRECT);
       setCorrectCount(c => c + 1);
@@ -772,10 +793,10 @@ function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales
       setIsPerfect(false);
       setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" ")) });
       if (newHearts <= 0) {
-        setTimeout(() => onComplete({ correctCount, xp, isPerfect: false, outOfHearts: true }), 1200);
+        setTimeout(() => onComplete({ correctCount, xp, isPerfect: false, outOfHearts: true, topicId, answers: answersRef.current }), 1200);
       }
     }
-  }, [ex, hearts, correctCount, xp]);
+  }, [ex, hearts, correctCount, xp, topicId]);
 
   const handleMatchComplete = useCallback(() => {
     setXp(x => x + XP_PER_CORRECT);
@@ -786,7 +807,7 @@ function LessonScreen({ lang, exercises, onComplete, onQuit, availableTtsLocales
   const handleContinue = () => {
     setFeedback(null);
     if (idx + 1 >= exercises.length) {
-      onComplete({ correctCount, xp, isPerfect });
+      onComplete({ correctCount, xp, isPerfect, topicId, answers: answersRef.current });
       return;
     }
     setIdx(i => i + 1);
@@ -1580,6 +1601,18 @@ export default function App() {
     setShowProfileCreate(false);
   };
 
+  const handleRestoreProfile = async (profileId, syncToken) => {
+    const data = await pullProfile(profileId, syncToken);
+    if (!data) return false;
+    const restored = await upsertProfileFromBackup(profileId, syncToken, data);
+    const fresh = await loadProfiles();
+    setProfiles(fresh);
+    setActiveProfileId(restored.id);
+    setStatsState(restored.stats || { streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
+    await saveActiveId(restored.id);
+    return true;
+  };
+
   const handleDeleteProfile = async (id) => {
     const fresh = await deleteProfileStore(id);
     setProfiles(fresh);
@@ -1594,7 +1627,7 @@ export default function App() {
   };
 
   const triggerPrefetch = (langId, topicId) => {
-    fetchLesson(langId, topicId)
+    fetchLesson(langId, topicId, getPersonalization(activeProfile, langId))
       .then(exs => { prefetchedLesson.current = { langId, topicId, exs }; })
       .catch(() => {});
   };
@@ -1615,7 +1648,7 @@ export default function App() {
     }
     setScreen("loading");
     try {
-      const exs = await fetchLesson(lang.id, topicId);
+      const exs = await fetchLesson(lang.id, topicId, getPersonalization(activeProfile, lang.id));
       if (!Array.isArray(exs) || exs.length === 0) throw new Error("empty");
       setExercises(exs);
       setScreen("lesson");
@@ -1628,7 +1661,7 @@ export default function App() {
 
   // Shared by solo lessons and battle matches: updates XP/streak/achievements and
   // persists to the active profile. Returns the newly-unlocked achievements.
-  const applyProgress = useCallback(({ xp, isPerfect, langId }) => {
+  const applyProgress = useCallback(({ xp, isPerfect, langId, topicId, answers }) => {
     const { streak, lastActiveDate } = bumpStreak(stats.streak, stats.lastActiveDate);
     const newStats = {
       ...stats,
@@ -1645,11 +1678,16 @@ export default function App() {
       ...(activeProfile?.achievements || []),
       ...newAchievements.map(a => a.id),
     ];
+    // Weak-spot / difficulty tracking (see assets/lib/learning.js) — only
+    // meaningful when we know which topic was played and have answer-level data.
+    const learningPatch = (topicId && answers && activeProfile)
+      ? recordAnswers(activeProfile, { langId, topicId, answers })
+      : null;
     // Update UI state immediately
     setStatsState(newStats);
     setProfiles((prev) =>
       prev.map((p) => p.id === activeProfileId
-        ? { ...p, stats: { ...newStats }, achievements: newAchievementIds }
+        ? { ...p, stats: { ...newStats }, achievements: newAchievementIds, ...(learningPatch || {}) }
         : p)
     );
     // Single atomic write — avoids the race between a stats write and an
@@ -1659,13 +1697,15 @@ export default function App() {
       updateProfileAtomic(activeProfileId, {
         stats: newStats,
         achievements: newAchievementIds,
-      }).catch((err) => console.warn("[profiles] persist failed:", err));
+        ...(learningPatch || {}),
+      }).then((saved) => { if (saved) pushProfile(saved); })
+        .catch((err) => console.warn("[profiles] persist failed:", err));
     }
     return newAchievements;
   }, [stats, activeProfileId, activeProfile]);
 
-  const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect }) => {
-    const newAchievements = applyProgress({ xp, isPerfect, langId: activeLang.id });
+  const handleLessonComplete = useCallback(({ correctCount, xp, isPerfect, topicId, answers }) => {
+    const newAchievements = applyProgress({ xp, isPerfect, langId: activeLang.id, topicId, answers });
     setResultData({ correctCount, total: exercises.length, xpEarned: xp, newAchievements });
     setScreen("result");
   }, [applyProgress, activeLang, exercises]);
@@ -1729,6 +1769,7 @@ export default function App() {
             onAddNew={handleCreateProfile}
             onDelete={handleDeleteProfile}
             onEdit={handleEditProfile}
+            onRestore={handleRestoreProfile}
           />
         )}
         {screen === "home" && !showProfileCreate && (
@@ -1760,7 +1801,7 @@ export default function App() {
         )}
         {screen === "loading" && activeLang && <LoadingScreen lang={activeLang} topic={activeTopic} />}
         {screen === "lesson" && activeLang && exercises.length > 0 && (
-          <LessonScreen lang={activeLang} exercises={exercises}
+          <LessonScreen lang={activeLang} topicId={activeTopic} exercises={exercises}
             onComplete={handleLessonComplete} onQuit={() => { setScreen("home"); resumeTheme(); }}
             availableTtsLocales={availableTtsLocales} />
         )}

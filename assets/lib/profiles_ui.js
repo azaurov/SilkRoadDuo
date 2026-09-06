@@ -167,6 +167,19 @@ export function ProfileCreateScreen({ onCancel, onCreated, initial }) {
             returnKeyType="done"
             onSubmitEditing={handleSave}
           />
+          {isEditing && initial?.syncToken && (
+            <View style={{ marginTop: 16, alignItems: "center" }}>
+              <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "700" }}>
+                Backup info — enter these on another device to restore this profile
+              </Text>
+              <Text style={{ fontSize: 12, color: "#374151", marginTop: 4 }} selectable>
+                Profile ID: {initial.id}
+              </Text>
+              <Text style={{ fontSize: 12, color: "#374151" }} selectable>
+                Backup code: {initial.syncToken}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -221,7 +234,27 @@ export function ProfileCreateScreen({ onCancel, onCreated, initial }) {
 }
 
 // ── Profile Switcher Modal ─────────────────────────────────────────────────
-export function ProfileSwitcherModal({ visible, profiles, activeId, onClose, onSwitch, onAddNew, onDelete, onEdit }) {
+// onRestore(profileId, token) -> Promise<boolean>: pulls a profile backed up
+// from another device via the cloud-sync Worker endpoint and saves it locally.
+export function ProfileSwitcherModal({ visible, profiles, activeId, onClose, onSwitch, onAddNew, onDelete, onEdit, onRestore }) {
+  const [showRestore, setShowRestore] = useState(false);
+  const [restoreId, setRestoreId] = useState("");
+  const [restoreToken, setRestoreToken] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  const submitRestore = async () => {
+    if (!restoreId.trim() || !restoreToken.trim() || !onRestore) return;
+    setRestoring(true);
+    const ok = await onRestore(restoreId.trim(), restoreToken.trim()).catch(() => false);
+    setRestoring(false);
+    if (ok) {
+      setShowRestore(false); setRestoreId(""); setRestoreToken("");
+      onClose();
+    } else {
+      Alert.alert("Restore failed", "No backup found for that profile ID / code.");
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
@@ -243,6 +276,36 @@ export function ProfileSwitcherModal({ visible, profiles, activeId, onClose, onS
             <Text style={styles.addBtnIcon}>＋</Text>
             <Text style={styles.addBtnText}>Add new profile</Text>
           </TouchableOpacity>
+          {onRestore && !showRestore && (
+            <TouchableOpacity style={{ marginTop: 10, alignItems: "center" }} onPress={() => setShowRestore(true)}>
+              <Text style={{ color: HEADER_BG, fontWeight: "700" }}>🔄 Restore from cloud backup</Text>
+            </TouchableOpacity>
+          )}
+          {onRestore && showRestore && (
+            <View style={{ marginTop: 10, gap: 8 }}>
+              <TextInput
+                style={styles.nameInput}
+                placeholder="Profile ID (from Settings on the other device)"
+                value={restoreId}
+                onChangeText={setRestoreId}
+                autoCapitalize="none"
+              />
+              <TextInput
+                style={styles.nameInput}
+                placeholder="Backup code"
+                value={restoreToken}
+                onChangeText={setRestoreToken}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={[styles.btn, { backgroundColor: HEADER_BG }, restoring && { opacity: 0.5 }]}
+                onPress={submitRestore}
+                disabled={restoring}
+              >
+                <Text style={[styles.btnText, { color: "#fff" }]}>{restoring ? "Restoring…" : "Restore"}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <TouchableOpacity style={[styles.btn, styles.btnSecondary, { marginTop: 8 }]} onPress={onClose}>
             <Text style={[styles.btnText, { color: HEADER_BG }]}>Close</Text>
           </TouchableOpacity>

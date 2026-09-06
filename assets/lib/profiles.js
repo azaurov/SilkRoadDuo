@@ -1,12 +1,18 @@
-// Local-only profile storage for Silk Road Duo.
-// Each profile has its own stats, achievements, and lesson progress.
+// Profile storage for Silk Road Duo.
+// Each profile has its own stats, achievements, lesson progress, and
+// personalization data (per-topic accuracy, weak words, difficulty tier —
+// see assets/lib/learning.js).
 //
-// Persistence: @react-native-async-storage/async-storage
+// Persistence: @react-native-async-storage/async-storage is the source of
+// truth for gameplay (offline-first). assets/lib/cloudSync.js optionally
+// backs a profile up to the battle Worker's /sync endpoint (opt-in restore
+// on another device, using the profile's syncToken as a bearer secret) —
+// local storage is never blocked on or overwritten by that.
 // Storage layout:
-//   @silk-road-duo:profiles  -> [{id, name, avatar, color, createdAt, stats, achievements}, ...]
+//   @silk-road-duo:profiles  -> [{id, name, avatar, color, createdAt, stats,
+//                                 achievements, topicStats, weakWords,
+//                                 recentAccuracy, difficulty, syncToken}, ...]
 //   @silk-road-duo:activeId  -> "uuid" of last-selected profile (string | null)
-//
-// No backend, no sync — intentionally offline-only.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -52,6 +58,13 @@ function makeProfile({ name, avatar, color }) {
     createdAt: Date.now(),
     stats: { ...DEFAULT_STATS },
     achievements: [],
+    topicStats: {},
+    weakWords: {},
+    recentAccuracy: {},
+    difficulty: {},
+    // Bearer secret for the optional cloud-sync backup/restore endpoint —
+    // never displayed, only sent to the Worker over HTTPS.
+    syncToken: uuid(),
   };
 }
 
@@ -125,6 +138,12 @@ export async function deleteProfile(id) {
   return next;
 }
 
+// Fields updateProfileAtomic is allowed to merge, and how each one merges:
+// object fields replace wholesale (callers pass the full computed value, as
+// learning.js's recordAnswers()/applyProgress do), matching the previous
+// stats/achievements behavior.
+const ATOMIC_FIELDS = ["stats", "achievements", "topicStats", "weakWords", "recentAccuracy", "difficulty"];
+
 // Atomic combined write — serializes concurrent lesson-completion writes.
 let _writeQueue = Promise.resolve();
 export async function updateProfileAtomic(id, mut) {
@@ -133,14 +152,32 @@ export async function updateProfileAtomic(id, mut) {
     const idx = profiles.findIndex((p) => p.id === id);
     if (idx < 0) return null;
     const patch = {};
-    if (mut.stats !== undefined)        patch.stats        = { ...mut.stats };
-    if (mut.achievements !== undefined) patch.achievements = Array.isArray(mut.achievements) ? mut.achievements : [];
+    for (const key of ATOMIC_FIELDS) {
+      if (mut[key] === undefined) continue;
+      patch[key] = key === "achievements"
+        ? (Array.isArray(mut[key]) ? mut[key] : [])
+        : { ...mut[key] };
+    }
     profiles[idx] = { ...profiles[idx], ...patch };
     await saveProfiles(profiles);
     return profiles[idx];
   })();
   _writeQueue = _writeQueue.then(() => next, () => next);
   return _writeQueue;
+}
+
+// Used only by the explicit "Restore from cloud backup" action (cloudSync.js
+// pullProfile + assets/lib/profiles_ui.js) — writes a profile fetched from
+// the Worker into local storage under its original id, so it plays exactly
+// like it did on the device that backed it up.
+export async function upsertProfileFromBackup(profileId, syncToken, data) {
+  const profiles = await loadProfiles();
+  const idx = profiles.findIndex((p) => p.id === profileId);
+  const restored = { ...data, id: profileId, syncToken };
+  if (idx >= 0) profiles[idx] = restored;
+  else profiles.push(restored);
+  await saveProfiles(profiles);
+  return restored;
 }
 
 // ── Streak helpers ──────────────────────────────────────────────────────────

@@ -12,5 +12,13 @@
 
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["BattleRoom"] }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "PROFILES_DB",
+      "database_name": "silk-road-duo-profiles",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
   ]
 }

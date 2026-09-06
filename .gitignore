@@ -8,6 +8,7 @@ node_modules
 
 # Sentinel logs
 scripts/sentinel.log
+scripts/sentinel_report.json
 
 # Build outputs — contain baked-in API keys
 dist/
