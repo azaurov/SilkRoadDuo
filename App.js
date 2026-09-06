@@ -1032,6 +1032,11 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
           <Text style={styles.sectionLabel}>PRACTICE WRITING IT</Text>
           <View style={{ height: 10 }} />
           <TracingCanvas
+            // Force a full remount per letter: PanResponder.create() is
+            // captured once via useRef, so without a key change its touch
+            // handlers would keep closing over the previous letter's guide
+            // geometry (and drawn strokes/progress) after Next/Prev.
+            key={`${lang.id}-${letterIndex}`}
             letter={entry.letter}
             color={lang.color}
             strokePath={entry.strokePath}
