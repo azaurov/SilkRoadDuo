@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Animated, ActivityIndicator, StatusBar,
-  Platform, Dimensions, Pressable, TextInput, Share,
+  Platform, Dimensions, Pressable, TextInput, Share, PanResponder,
 } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import * as Speech from "expo-speech";
 import * as Updates from "expo-updates";
 import { useAudioPlayer } from "expo-audio";
@@ -17,6 +18,7 @@ import {
 import { ProfileSelectScreen, ProfileCreateScreen, ProfileSwitcherModal } from "./assets/lib/profiles_ui";
 import { recordAnswers, getPersonalization, itemKeyFor } from "./assets/lib/learning";
 import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
+import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -713,6 +715,219 @@ function TopicScreen({ lang, onSelect, onBack }) {
   );
 }
 
+/* ─── Alphabet: letter grid ─────────────────────────────────────────────── */
+function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
+  const letters = ALPHABETS[lang.id] || [];
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.topicHeader, { backgroundColor: lang.color }]}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={styles.topicHeaderTitle}>{lang.emoji} {lang.name}</Text>
+          <Text style={styles.topicHeaderSub}>The alphabet</Text>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
+          {letters.map((entry, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[styles.letterTile, { borderColor: lang.color + "55", backgroundColor: lang.pale }]}
+              onPress={() => onSelectLetter(i)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.letterTileGlyph,
+                  { color: lang.color },
+                  lang.id === "sogdian" && { fontFamily: sogdianFont(entry.letter) },
+                ]}
+              >
+                {entry.letter}
+              </Text>
+              <Text style={styles.letterTileName}>{entry.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {letters.length === 0 && (
+          <Text style={{ textAlign: "center", color: "#AFAFAF", marginTop: 40 }}>
+            No alphabet data yet for {lang.name}.
+          </Text>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+/* ─── Alphabet: tracing canvas ──────────────────────────────────────────── */
+// Genuine finger-tracing practice, not stroke-accuracy grading: the real
+// letterform is shown as a faint guide and the learner draws freely over it.
+// There is no canonical per-letter stroke-order data behind this — grading
+// against calligraphic norms would need specialist reference data this app
+// doesn't have, so this deliberately doesn't pretend to score accuracy.
+function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
+  const [paths, setPaths] = useState([]);
+  const currentPath = useRef("");
+  const [, forceRender] = useState(0);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        currentPath.current = `M${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        forceRender((n) => n + 1);
+      },
+      onPanResponderMove: (evt) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        currentPath.current += ` L${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        forceRender((n) => n + 1);
+      },
+      onPanResponderRelease: () => {
+        if (currentPath.current) {
+          setPaths((prev) => [...prev, currentPath.current]);
+          currentPath.current = "";
+        }
+      },
+    })
+  ).current;
+
+  const clear = () => {
+    setPaths([]);
+    currentPath.current = "";
+    forceRender((n) => n + 1);
+  };
+
+  const traced = paths.length > 0;
+
+  return (
+    <View style={{ alignItems: "center" }}>
+      <View
+        style={[styles.tracingBox, { width: size, height: size }]}
+        {...panResponder.panHandlers}
+      >
+        <Text
+          style={[
+            styles.tracingGuide,
+            { fontSize: size * 0.65, lineHeight: size, color: "#00000022" },
+            fontFamily && { fontFamily },
+          ]}
+        >
+          {letter}
+        </Text>
+        <Svg style={StyleSheet.absoluteFill} width={size} height={size}>
+          {paths.map((d, i) => (
+            <Path key={i} d={d} stroke={color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          ))}
+          {currentPath.current ? (
+            <Path d={currentPath.current} stroke={color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          ) : null}
+        </Svg>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+        <TouchableOpacity style={[styles.btnSecondary, { paddingHorizontal: 20 }]} onPress={clear}>
+          <Text style={styles.btnSecondaryText}>Clear</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.tracingHint}>
+        {traced ? "Nice — trace again as many times as you like." : "Trace the letter with your finger."}
+      </Text>
+    </View>
+  );
+}
+
+/* ─── Alphabet: letter detail ───────────────────────────────────────────── */
+function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
+  const letters = ALPHABETS[lang.id] || [];
+  const entry = letters[letterIndex];
+  if (!entry) return null;
+  const canSpeak = ALPHABET_TTS_LANGS.has(lang.id);
+  const ttsLocale = SPEECH_LOCALE[lang.id];
+
+  const speak = () => {
+    Speech.stop();
+    Speech.speak(entry.letter, ttsLocale ? { language: ttsLocale } : {});
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.topicHeader, { backgroundColor: lang.color }]}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={styles.topicHeaderTitle}>{lang.emoji} {lang.name}</Text>
+          <Text style={styles.topicHeaderSub}>Letter {letterIndex + 1} of {letters.length}</Text>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center", paddingBottom: 40 }}>
+        <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44", width: "100%" }]}>
+          <Text
+            style={[
+              styles.letterBigGlyph,
+              { color: lang.color },
+              lang.id === "sogdian" && { fontFamily: sogdianFont(entry.letter) },
+            ]}
+          >
+            {entry.letter}
+          </Text>
+          <Text style={styles.promptRomanized}>{entry.name}</Text>
+          {canSpeak && (
+            <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
+              <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={{ width: "100%", marginTop: 16, gap: 10 }}>
+          <View style={styles.alphaInfoRow}>
+            <Text style={styles.alphaInfoLabel}>SOUND</Text>
+            <Text style={styles.alphaInfoText}>{entry.sound}</Text>
+          </View>
+          <View style={styles.alphaInfoRow}>
+            <Text style={styles.alphaInfoLabel}>CLOSEST ENGLISH SOUND</Text>
+            <Text style={styles.alphaInfoText}>{entry.englishLike}</Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 24, width: "100%", alignItems: "center" }}>
+          <Text style={styles.sectionLabel}>PRACTICE WRITING IT</Text>
+          <View style={{ height: 10 }} />
+          <TracingCanvas
+            letter={entry.letter}
+            fontFamily={lang.id === "sogdian" ? sogdianFont(entry.letter) : undefined}
+            color={lang.color}
+          />
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 12, marginTop: 28, width: "100%" }}>
+          <TouchableOpacity
+            style={[styles.btnSecondary, { flex: 1, opacity: letterIndex === 0 ? 0.4 : 1 }]}
+            onPress={onPrev}
+            disabled={letterIndex === 0}
+          >
+            <Text style={styles.btnSecondaryText}>← Prev</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.btn, { flex: 1, backgroundColor: lang.color, opacity: letterIndex === letters.length - 1 ? 0.4 : 1 }]}
+            onPress={onNext}
+            disabled={letterIndex === letters.length - 1}
+          >
+            <Text style={[styles.btnText, { color: "#fff" }]}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* ─── Achievements Screen ───────────────────────────────────────────────── */
 function AchievementsScreen({ stats, onBack }) {
   const unlocked = ACHIEVEMENTS.filter(a => a.check(stats));
@@ -1362,7 +1577,7 @@ function BattleScreen({ profile, stopTheme, resumeTheme, availableTtsLocales, on
 }
 
 /* ─── Home Screen ───────────────────────────────────────────────────────── */
-function HomeScreen({ onSelect, stats, onAchievements, onBattle, profile, onSwitchProfile }) {
+function HomeScreen({ onSelect, onAlphabet, stats, onAchievements, onBattle, profile, onSwitchProfile }) {
   const dailyTip = CULTURAL_TIPS[new Date().getDate() % CULTURAL_TIPS.length];
   const unlockedCount = ACHIEVEMENTS.filter(a => a.check(stats)).length;
 
@@ -1466,6 +1681,14 @@ function HomeScreen({ onSelect, stats, onAchievements, onBattle, profile, onSwit
                   <Text style={[styles.langXP, { color: lang.color }]}>{stats[lang.id + "_xp"] || 0} XP</Text>
                 </View>
               </View>
+              <TouchableOpacity
+                style={[styles.langAlphaBtn, { backgroundColor: lang.pale }]}
+                onPress={(e) => { e.stopPropagation?.(); onAlphabet(lang); }}
+                activeOpacity={0.7}
+                accessibilityLabel={`${lang.name} alphabet`}
+              >
+                <Text style={styles.langAlphaBtnText}>🔤</Text>
+              </TouchableOpacity>
               <View style={[styles.langArrow, { backgroundColor: lang.pale }]}>
                 <Text style={[styles.langArrowText, { color: lang.color }]}>→</Text>
               </View>
@@ -1489,6 +1712,7 @@ export default function App() {
   const [screen, setScreen] = useState("home");
   const [activeLang, setActiveLang] = useState(null);
   const [activeTopic, setActiveTopic] = useState(null);
+  const [activeLetterIndex, setActiveLetterIndex] = useState(0);
   const [exercises, setExercises] = useState([]);
   const [error, setError] = useState(null);
   const [stats, setStatsState] = useState({ streak: 0, totalXP: 0, lessons: 0, perfectLessons: 0, lastActiveDate: null });
@@ -1779,11 +2003,28 @@ export default function App() {
         {screen === "home" && !showProfileCreate && (
           <HomeScreen
             onSelect={(lang) => { setActiveLang(lang); setScreen("topic"); }}
+            onAlphabet={(lang) => { setActiveLang(lang); setScreen("alphabetList"); }}
             stats={stats}
             onAchievements={() => setScreen("achievements")}
             onBattle={() => setScreen("battle")}
             profile={activeProfile}
             onSwitchProfile={() => setShowProfilePicker(true)}
+          />
+        )}
+        {screen === "alphabetList" && activeLang && (
+          <AlphabetListScreen
+            lang={activeLang}
+            onBack={() => setScreen("home")}
+            onSelectLetter={(i) => { setActiveLetterIndex(i); setScreen("alphabetLetter"); }}
+          />
+        )}
+        {screen === "alphabetLetter" && activeLang && (
+          <AlphabetLetterScreen
+            lang={activeLang}
+            letterIndex={activeLetterIndex}
+            onBack={() => setScreen("alphabetList")}
+            onNext={() => setActiveLetterIndex((i) => Math.min(i + 1, (ALPHABETS[activeLang.id]?.length || 1) - 1))}
+            onPrev={() => setActiveLetterIndex((i) => Math.max(i - 1, 0))}
           />
         )}
         {screen === "battle" && (
@@ -1993,5 +2234,32 @@ const styles = StyleSheet.create({
   codeDisplay: { alignItems: "center", backgroundColor: "#F7F7F7", borderRadius: 20, borderWidth: 2, borderColor: "#E5E5E5", padding: 20, paddingHorizontal: 32 },
   codeDisplayLabel: { fontSize: 11, fontWeight: "900", color: "#AFAFAF", letterSpacing: 1.5, marginBottom: 6 },
   codeDisplayText: { fontSize: 36, fontWeight: "900", color: "#3C3C3C", letterSpacing: 6 },
+
+  /* Alphabet */
+  langAlphaBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  langAlphaBtnText: { fontSize: 17 },
+  letterTile: {
+    width: 82, height: 82, borderRadius: 16, borderWidth: 2,
+    alignItems: "center", justifyContent: "center", gap: 2,
+  },
+  letterTileGlyph: { fontSize: 28, fontWeight: "800" },
+  letterTileName: { fontSize: 11, color: "#6B7280", fontWeight: "700" },
+  letterBigGlyph: { fontSize: 64, fontWeight: "800" },
+  alphaInfoRow: {
+    backgroundColor: "#F7F7F7", borderRadius: 14, borderWidth: 1, borderColor: "#E5E5E5",
+    padding: 14,
+  },
+  alphaInfoLabel: { fontSize: 11, fontWeight: "900", color: "#AFAFAF", letterSpacing: 1, marginBottom: 4 },
+  alphaInfoText: { fontSize: 15, color: "#3C3C3C", fontWeight: "600" },
+  tracingBox: {
+    backgroundColor: "#FAFAFA", borderRadius: 20, borderWidth: 2, borderColor: "#E5E5E5",
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
+  },
+  tracingGuide: { fontWeight: "800", textAlign: "center" },
+  tracingHint: { fontSize: 12, color: "#AFAFAF", fontWeight: "600", marginTop: 10, textAlign: "center" },
+  btn: { borderRadius: 14, paddingVertical: 14, alignItems: "center" },
+  btnText: { fontSize: 15, fontWeight: "800" },
+  btnSecondary: { borderRadius: 14, paddingVertical: 14, alignItems: "center", backgroundColor: "#F7F7F7", borderWidth: 2, borderColor: "#E5E5E5" },
+  btnSecondaryText: { fontSize: 15, fontWeight: "800", color: "#6B7280" },
 });
 
