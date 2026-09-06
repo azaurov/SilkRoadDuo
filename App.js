@@ -925,17 +925,18 @@ function TracingCanvas({ letter, fontFamily, color, size = 240, strokePath }) {
         style={[styles.tracingBox, { width: size, height: size }]}
         {...panResponder.panHandlers}
       >
-        {!guided && (
-          <Text
-            style={[
-              styles.tracingGuide,
-              { fontSize: size * 0.65, lineHeight: size, color: "#00000022" },
-              fontFamily && { fontFamily },
-            ]}
-          >
-            {letter}
-          </Text>
-        )}
+        {/* Always show the real glyph as a faint reference — the dashed
+            strokePath overlay (when present) is a simplified directional
+            practice aid, not a replacement for seeing the actual letter. */}
+        <Text
+          style={[
+            styles.tracingGuide,
+            { fontSize: size * 0.65, lineHeight: size, color: "#00000022" },
+            fontFamily && { fontFamily },
+          ]}
+        >
+          {letter}
+        </Text>
         <Svg style={StyleSheet.absoluteFill} width={size} height={size}>
           {guided && (
             <>
