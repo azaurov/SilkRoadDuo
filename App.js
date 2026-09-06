@@ -767,6 +767,14 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
   const [paths, setPaths] = useState([]);
   const currentPath = useRef("");
   const [, forceRender] = useState(0);
+  // pageX/pageY (always populated, unlike locationX/Y which can come back
+  // unset in capture-phase handlers) minus this offset gives box-local coords.
+  const boxOffset = useRef({ x: 0, y: 0 });
+
+  const toLocal = (evt) => ({
+    x: evt.nativeEvent.pageX - boxOffset.current.x,
+    y: evt.nativeEvent.pageY - boxOffset.current.y,
+  });
 
   const panResponder = useRef(
     PanResponder.create({
@@ -780,13 +788,13 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        currentPath.current = `M${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        const { x, y } = toLocal(evt);
+        currentPath.current = `M${x.toFixed(1)},${y.toFixed(1)}`;
         forceRender((n) => n + 1);
       },
       onPanResponderMove: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        currentPath.current += ` L${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        const { x, y } = toLocal(evt);
+        currentPath.current += ` L${x.toFixed(1)},${y.toFixed(1)}`;
         forceRender((n) => n + 1);
       },
       onPanResponderRelease: () => {
@@ -808,10 +816,18 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
   };
 
   const traced = paths.length > 0;
+  const boxRef = useRef(null);
+  const measureBox = () => {
+    boxRef.current?.measure((x, y, width, height, pageX, pageY) => {
+      boxOffset.current = { x: pageX, y: pageY };
+    });
+  };
 
   return (
     <View style={{ alignItems: "center" }}>
       <View
+        ref={boxRef}
+        onLayout={measureBox}
         style={[styles.tracingBox, { width: size, height: size }]}
         {...panResponder.panHandlers}
       >
