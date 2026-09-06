@@ -757,19 +757,83 @@ function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
   );
 }
 
-/* ─── Alphabet: tracing canvas ──────────────────────────────────────────── */
-// Genuine finger-tracing practice, not stroke-accuracy grading: the real
-// letterform is shown as a faint guide and the learner draws freely over it.
-// There is no canonical per-letter stroke-order data behind this — grading
-// against calligraphic norms would need specialist reference data this app
-// doesn't have, so this deliberately doesn't pretend to score accuracy.
-function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
+/* ─── Alphabet: guided tracing geometry ─────────────────────────────────── */
+// 1cm in React Native's density-independent points: RN dimensions are already
+// dp (1/160 inch) on every platform, so this constant is physical-size-
+// consistent across devices without any PixelRatio conversion.
+const TRACE_HIT_RADIUS_PT = (1 / 2.54) * 160; // ≈ 63pt
+
+function tracePathLength(pts) {
+  let total = 0;
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    cum.push(total);
+  }
+  return { total, cum };
+}
+
+// Nearest point on the polyline to (x,y), plus how far along the whole
+// path (0..1) that nearest point is — used both for the "within ~1cm"
+// gate and for tracking how much of the letter has been swept.
+function projectToPath(pts, cum, total, x, y) {
+  let best = { dist: Infinity, t: 0 };
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const segLen2 = dx * dx + dy * dy || 1;
+    let u = ((x - a.x) * dx + (y - a.y) * dy) / segLen2;
+    u = Math.max(0, Math.min(1, u));
+    const px = a.x + u * dx, py = a.y + u * dy;
+    const dist = Math.hypot(x - px, y - py);
+    if (dist < best.dist) {
+      const segLen = Math.hypot(dx, dy);
+      best = { dist, t: total > 0 ? (cum[i - 1] + u * segLen) / total : 0 };
+    }
+  }
+  return best;
+}
+
+// Small triangle arrowhead pointing along the local tangent at path
+// fraction `at` (0..1) — this is the "indicate the direction" affordance.
+function ArrowHead({ pts, cum, total, at, color }) {
+  const targetLen = at * total;
+  let i = 1;
+  while (i < cum.length - 1 && cum[i] < targetLen) i++;
+  const a = pts[i - 1], b = pts[i];
+  const angle = Math.atan2(b.y - a.y, b.x - a.x) * (180 / Math.PI);
+  const segLen = cum[i] - cum[i - 1] || 1;
+  const u = segLen > 0 ? (targetLen - cum[i - 1]) / segLen : 0;
+  const cx = a.x + u * (b.x - a.x), cy = a.y + u * (b.y - a.y);
+  return (
+    <Path
+      d="M -9,-6 L 9,0 L -9,6 Z"
+      fill={color}
+      transform={`translate(${cx}, ${cy}) rotate(${angle})`}
+    />
+  );
+}
+
+// Guided tracing: draws only registers while the finger stays within
+// TRACE_HIT_RADIUS_PT (~1cm) of the reference stroke path, and arrowheads
+// show which way to draw. `strokePath` is a simplified single-stroke
+// monoline approximation (normalized 0..1 coordinates) — a practice aid,
+// not an authoritative calligraphic stroke order. Falls back to unguided
+// free tracing when no strokePath is supplied for a language yet.
+function TracingCanvas({ letter, fontFamily, color, size = 240, strokePath }) {
   const [paths, setPaths] = useState([]);
+  const [progress, setProgress] = useState(0);
   const currentPath = useRef("");
+  const maxProgress = useRef(0);
   const [, forceRender] = useState(0);
   // pageX/pageY (always populated, unlike locationX/Y which can come back
   // unset in capture-phase handlers) minus this offset gives box-local coords.
   const boxOffset = useRef({ x: 0, y: 0 });
+
+  const guided = Array.isArray(strokePath) && strokePath.length > 1;
+  const pts = guided ? strokePath.map((p) => ({ x: p.x * size, y: p.y * size })) : null;
+  const { total, cum } = guided ? tracePathLength(pts) : { total: 0, cum: [] };
+  const complete = guided && progress >= 0.92;
 
   const toLocal = (evt) => ({
     x: evt.nativeEvent.pageX - boxOffset.current.x,
@@ -789,12 +853,32 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (evt) => {
         const { x, y } = toLocal(evt);
-        currentPath.current = `M${x.toFixed(1)},${y.toFixed(1)}`;
+        if (guided) {
+          const { dist, t } = projectToPath(pts, cum, total, x, y);
+          if (dist <= TRACE_HIT_RADIUS_PT) {
+            currentPath.current = `M${x.toFixed(1)},${y.toFixed(1)}`;
+            maxProgress.current = Math.max(maxProgress.current, t);
+          }
+        } else {
+          currentPath.current = `M${x.toFixed(1)},${y.toFixed(1)}`;
+        }
         forceRender((n) => n + 1);
       },
       onPanResponderMove: (evt) => {
         const { x, y } = toLocal(evt);
-        currentPath.current += ` L${x.toFixed(1)},${y.toFixed(1)}`;
+        if (guided) {
+          const { dist, t } = projectToPath(pts, cum, total, x, y);
+          if (dist <= TRACE_HIT_RADIUS_PT) {
+            currentPath.current += currentPath.current
+              ? ` L${x.toFixed(1)},${y.toFixed(1)}`
+              : `M${x.toFixed(1)},${y.toFixed(1)}`;
+            maxProgress.current = Math.max(maxProgress.current, t);
+          }
+          // else: finger has wandered past the ~1cm guide tolerance — drop
+          // the point rather than recording an off-track line.
+        } else {
+          currentPath.current += ` L${x.toFixed(1)},${y.toFixed(1)}`;
+        }
         forceRender((n) => n + 1);
       },
       onPanResponderRelease: () => {
@@ -809,6 +893,7 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
         if (finished.includes("L")) {
           setPaths((prev) => [...prev, finished]);
         }
+        if (guided) setProgress(maxProgress.current);
         forceRender((n) => n + 1);
       },
     })
@@ -816,6 +901,8 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
 
   const clear = () => {
     setPaths([]);
+    setProgress(0);
+    maxProgress.current = 0;
     currentPath.current = "";
     forceRender((n) => n + 1);
   };
@@ -828,6 +915,8 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
     });
   };
 
+  const guideColor = complete ? "#58CC02" : "#B0B0B0";
+
   return (
     <View style={{ alignItems: "center" }}>
       <View
@@ -836,21 +925,42 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
         style={[styles.tracingBox, { width: size, height: size }]}
         {...panResponder.panHandlers}
       >
-        <Text
-          style={[
-            styles.tracingGuide,
-            { fontSize: size * 0.65, lineHeight: size, color: "#00000022" },
-            fontFamily && { fontFamily },
-          ]}
-        >
-          {letter}
-        </Text>
+        {!guided && (
+          <Text
+            style={[
+              styles.tracingGuide,
+              { fontSize: size * 0.65, lineHeight: size, color: "#00000022" },
+              fontFamily && { fontFamily },
+            ]}
+          >
+            {letter}
+          </Text>
+        )}
         <Svg style={StyleSheet.absoluteFill} width={size} height={size}>
+          {guided && (
+            <>
+              <Path
+                d={`M${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")}`}
+                stroke={guideColor}
+                strokeWidth={3}
+                strokeDasharray="9,7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {/* start marker */}
+              <Path d={`M ${pts[0].x - 7},${pts[0].y} a 7,7 0 1,0 14,0 a 7,7 0 1,0 -14,0`} fill="#58CC02" />
+              {/* direction arrows along the stroke */}
+              <ArrowHead pts={pts} cum={cum} total={total} at={0.32} color={guideColor} />
+              <ArrowHead pts={pts} cum={cum} total={total} at={0.68} color={guideColor} />
+              <ArrowHead pts={pts} cum={cum} total={total} at={0.95} color={guideColor} />
+            </>
+          )}
           {paths.map((d, i) => (
-            <Path key={i} d={d} stroke={color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <Path key={i} d={d} stroke={complete ? "#58CC02" : color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
           ))}
           {currentPath.current ? (
-            <Path d={currentPath.current} stroke={color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <Path d={currentPath.current} stroke={complete ? "#58CC02" : color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
           ) : null}
         </Svg>
       </View>
@@ -860,7 +970,9 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
         </TouchableOpacity>
       </View>
       <Text style={styles.tracingHint}>
-        {traced ? "Nice — trace again as many times as you like." : "Trace the letter with your finger."}
+        {guided
+          ? (complete ? "Great — you traced the whole letter! Clear to try again." : "Follow the dashed line and arrows, staying close to it (about a fingertip's width).")
+          : (traced ? "Nice — trace again as many times as you like." : "Trace the letter with your finger.")}
       </Text>
     </View>
   );
@@ -922,6 +1034,7 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
           <TracingCanvas
             letter={entry.letter}
             color={lang.color}
+            strokePath={entry.strokePath}
           />
         </View>
 
