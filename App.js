@@ -740,13 +740,7 @@ function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
               onPress={() => onSelectLetter(i)}
               activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.letterTileGlyph,
-                  { color: lang.color },
-                  lang.id === "sogdian" && { fontFamily: sogdianFont(entry.letter) },
-                ]}
-              >
+              <Text style={[styles.letterTileGlyph, { color: lang.color }]}>
                 {entry.letter}
               </Text>
               <Text style={styles.letterTileName}>{entry.name}</Text>
@@ -776,8 +770,15 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // Capture phase + block-native-responder: the tracing box sits inside
+      // a ScrollView, which will otherwise steal the gesture mid-drag as a
+      // vertical scroll (a diagonal or vertical stroke looks just like a
+      // scroll to the ScrollView) before enough move points are captured to
+      // draw a visible line.
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
         currentPath.current = `M${locationX.toFixed(1)},${locationY.toFixed(1)}`;
@@ -789,10 +790,13 @@ function TracingCanvas({ letter, fontFamily, color, size = 240 }) {
         forceRender((n) => n + 1);
       },
       onPanResponderRelease: () => {
-        if (currentPath.current) {
+        // Require at least one actual line segment — a bare tap (grant with
+        // no move) would otherwise push an invisible zero-length "traced" path.
+        if (currentPath.current.includes("L")) {
           setPaths((prev) => [...prev, currentPath.current]);
-          currentPath.current = "";
         }
+        currentPath.current = "";
+        forceRender((n) => n + 1);
       },
     })
   ).current;
@@ -869,13 +873,7 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center", paddingBottom: 40 }}>
         <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44", width: "100%" }]}>
-          <Text
-            style={[
-              styles.letterBigGlyph,
-              { color: lang.color },
-              lang.id === "sogdian" && { fontFamily: sogdianFont(entry.letter) },
-            ]}
-          >
+          <Text style={[styles.letterBigGlyph, { color: lang.color }]}>
             {entry.letter}
           </Text>
           <Text style={styles.promptRomanized}>{entry.name}</Text>
@@ -902,7 +900,6 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
           <View style={{ height: 10 }} />
           <TracingCanvas
             letter={entry.letter}
-            fontFamily={lang.id === "sogdian" ? sogdianFont(entry.letter) : undefined}
             color={lang.color}
           />
         </View>

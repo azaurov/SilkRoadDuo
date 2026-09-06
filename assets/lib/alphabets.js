@@ -197,28 +197,37 @@ export const ALPHABETS = {
   ],
 
   // Sogdian used the Sogdian script (a Unicode block descended from Aramaic,
-  // via Syriac) — an abjad-like script with distinct isolated letterforms.
-  // This is the standard reference set of base consonant letters.
+  // via Syriac) — but Android's text shaper (HarfBuzz) can't reliably shape
+  // it even with the bundled NotoSansSogdian font (see the note in App.js's
+  // fetchLesson — this is a known, pre-existing platform limitation, not
+  // something fixable from JS). An earlier version of this data used the
+  // real Sogdian Unicode codepoints directly and rendered as tofu boxes on
+  // device; it also had the codepoint-to-letter mapping wrong (verified
+  // against the font's own cmap — U+10F33 is "He", not "Daleth"). Using the
+  // standard scholarly transliteration (the convention used in Sogdian
+  // philology, e.g. Sims-Williams' grammars) instead sidesteps the rendering
+  // bug entirely and is the accurate, citable representation either way.
   sogdian: [
-    { letter: "𐼰", name: "aleph",  sound: "vowel carrier, similar role to Aramaic alap", englishLike: "the catch in \"uh-oh\"" },
-    { letter: "𐼱", name: "beth",   sound: "b",                                           englishLike: "b — boy" },
-    { letter: "𐼲", name: "gimel",  sound: "hard g",                                      englishLike: "g — go" },
-    { letter: "𐼳", name: "daleth", sound: "d",                                           englishLike: "d — dog" },
-    { letter: "𐼴", name: "he",     sound: "h",                                           englishLike: "h — hat" },
-    { letter: "𐼵", name: "waw",    sound: "w, or a long 'oo' vowel",                     englishLike: "w — win" },
-    { letter: "𐼶", name: "zayin",  sound: "z",                                           englishLike: "z — zoo" },
-    { letter: "𐼷", name: "heth",   sound: "raspy throat fricative",                      englishLike: "ch — Scottish \"loch\"" },
-    { letter: "𐼸", name: "yodh",   sound: "y, or a long 'ee' vowel",                     englishLike: "y — yes" },
-    { letter: "𐼹", name: "kaph",   sound: "k",                                           englishLike: "k — kite" },
-    { letter: "𐼺", name: "lamedh", sound: "l",                                           englishLike: "l — lamp" },
-    { letter: "𐼻", name: "mem",    sound: "m",                                           englishLike: "m — mom" },
-    { letter: "𐼼", name: "nun",    sound: "n",                                           englishLike: "n — no" },
-    { letter: "𐼽", name: "samekh", sound: "s",                                           englishLike: "s — sun" },
-    { letter: "𐼾", name: "pe",     sound: "p",                                           englishLike: "p — pen" },
-    { letter: "𐼿", name: "sadhe",  sound: "emphatic s",                                  englishLike: "ts — cats" },
-    { letter: "𐽀", name: "resh",   sound: "rolled r",                                    englishLike: "rolled r, like Spanish 'r'" },
-    { letter: "𐽁", name: "shin",   sound: "sh",                                          englishLike: "sh — shoe" },
-    { letter: "𐽂", name: "taw",    sound: "t",                                           englishLike: "t — top" },
+    { letter: "ʾ", name: "aleph",  sound: "vowel carrier, similar role to Aramaic alap", englishLike: "the catch in \"uh-oh\"" },
+    { letter: "β", name: "beth",   sound: "b, or a soft 'v' between vowels",             englishLike: "b — boy" },
+    { letter: "γ", name: "gimel",  sound: "hard g, or a soft throat sound between vowels", englishLike: "g — go" },
+    { letter: "δ", name: "daleth", sound: "d, or a soft 'th' between vowels",            englishLike: "d — dog" },
+    { letter: "h", name: "he",     sound: "h",                                           englishLike: "h — hat" },
+    { letter: "w", name: "waw",    sound: "w, or a long 'oo' vowel",                     englishLike: "w — win" },
+    { letter: "z", name: "zayin",  sound: "z",                                           englishLike: "z — zoo" },
+    { letter: "ḥ", name: "heth",   sound: "raspy throat fricative",                      englishLike: "ch — Scottish \"loch\"" },
+    { letter: "y", name: "yodh",   sound: "y, or a long 'ee' vowel",                     englishLike: "y — yes" },
+    { letter: "k", name: "kaph",   sound: "k",                                           englishLike: "k — kite" },
+    { letter: "l", name: "lamedh", sound: "l",                                           englishLike: "l — lamp" },
+    { letter: "m", name: "mem",    sound: "m",                                           englishLike: "m — mom" },
+    { letter: "n", name: "nun",    sound: "n",                                           englishLike: "n — no" },
+    { letter: "s", name: "samekh", sound: "s",                                           englishLike: "s — sun" },
+    { letter: "ʿ", name: "ayin",   sound: "deep throat catch",                           englishLike: "no true English equivalent" },
+    { letter: "p", name: "pe",     sound: "p",                                           englishLike: "p — pen" },
+    { letter: "c", name: "sadhe",  sound: "emphatic s",                                  englishLike: "ts — cats" },
+    { letter: "r", name: "resh",   sound: "rolled r",                                    englishLike: "rolled r, like Spanish 'r'" },
+    { letter: "š", name: "shin",   sound: "sh",                                          englishLike: "sh — shoe" },
+    { letter: "t", name: "taw",    sound: "t",                                           englishLike: "t — top" },
   ],
 };
 
