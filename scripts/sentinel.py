@@ -301,6 +301,11 @@ def check_on_screen_errors(screen_text):
 def launch_app():
     if LAUNCH_MODE == "standalone":
         log(f"Launching installed standalone build ({STANDALONE_PACKAGE})...")
+        # force-stop first: `am start` on an already-backgrounded task resumes
+        # wherever it was left (e.g. mid-lesson, or a screen from manual
+        # testing) instead of a fresh cold start from the home screen, which
+        # silently breaks every hardcoded tap coordinate downstream.
+        adb("am", "force-stop", STANDALONE_PACKAGE)
         adb("am", "start", "-n", f"{STANDALONE_PACKAGE}/.MainActivity")
     else:
         log("Launching app via Expo Go deep link...")
