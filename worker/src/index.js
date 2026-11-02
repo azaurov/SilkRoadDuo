@@ -1,4 +1,5 @@
 export { BattleRoom } from "./battleRoom.js";
+import { handleLesson } from "./lesson.js";
 
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L — avoids code confusion
 const CODE_RE = /^\/room\/([A-Z0-9]{4,8})$/i;
@@ -71,6 +72,9 @@ async function handleSync(request, env, profileId, headers) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // /lesson has its own (restricted) CORS and must be matched before the generic OPTIONS reply below.
+    if (url.pathname === "/lesson") return handleLesson(request, env);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders() });

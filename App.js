@@ -18,12 +18,19 @@ import {
 import { ProfileSelectScreen, ProfileCreateScreen, ProfileSwitcherModal } from "./assets/lib/profiles_ui";
 import { recordAnswers, getPersonalization, itemKeyFor } from "./assets/lib/learning";
 import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
+import { buildPrompt } from "./assets/lib/lessonPrompt";
 import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
 // EXPO_PUBLIC_LLM_BACKEND: "groq" (default) | "openrouter" | "gemini" | "local"
 const BACKEND = process.env.EXPO_PUBLIC_LLM_BACKEND || "groq";
+
+// Lesson proxy (the Cloudflare Worker's /lesson route, see worker/src/lesson.js). When set, the
+// provider API keys live only on the server and the app sends {langId, topicId, personalization}.
+// When empty (local dev) the app calls the providers directly with EXPO_PUBLIC_*_API_KEY, which
+// MUST NOT be set for a build that is published: those values are baked into the bundle.
+const LESSON_PROXY_URL = process.env.EXPO_PUBLIC_LESSON_PROXY_URL || "";
 
 // Battle server (Cloudflare Worker + Durable Object, see worker/) — http(s) base URL,
 // converted to ws(s) for the live connection.
@@ -138,41 +145,7 @@ const CULTURAL_TIPS = [
 ];
 
 /* ─── AI Helpers ────────────────────────────────────────────────────────── */
-function buildPrompt(langId, topicId, personalization) {
-  const names = {
-    bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
-    farsi: "Farsi (Persian)",
-    sogdian: "Sogdian (ancient Silk Road language, romanized transliteration only for both word and word_native)",
-    arabic: "Arabic (use both Arabic script and romanized transliteration)",
-    uzbek: "Uzbek (modern Latin-script Uzbek)",
-    hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
-    aramaic: "Aramaic (Classical/Syriac, romanized transliteration only for both word and word_native — do NOT output Syriac script)",
-  };
-  const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
-  const difficulty = personalization?.difficulty || "beginner";
-  const difficultyHint = {
-    beginner: "Keep vocabulary common and sentences short and simple.",
-    intermediate: "Use moderately varied vocabulary and slightly longer sentences than a total beginner would see.",
-    advanced: "Use richer vocabulary, idioms, and more complex sentence structures — this learner is doing well.",
-  }[difficulty];
-  const weakWords = personalization?.weakWords?.length
-    ? ` This learner has previously struggled with these words/phrases — naturally reinforce at least 2-3 of them if they fit the topic: ${personalization.weakWords.slice(0, 8).join(", ")}.`
-    : "";
-  return `You are an expert ${names[langId]} language teacher. Generate a lesson of exactly 20 exercises for a learner at the ${difficulty} level. ${difficultyHint}${topicHint}${weakWords}
-Return ONLY a valid JSON array, no markdown fences, no explanation.
-
-Use these types in order: mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, mcq, wordarrange, mcq, mcq, match, mcq, fillblank, wordarrange
-
-MCQ: {"type":"mcq","direction":"target_to_en","word":"<romanized>","word_native":"<native script>","english":"<meaning>","correct":"<correct option>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"],"fun_fact":"<cultural fact>"}
-
-MATCH (4 pairs): {"type":"match","pairs":[{"target":"<romanized>","english":"<meaning>"},{"target":"<w2>","english":"<m2>"},{"target":"<w3>","english":"<m3>"},{"target":"<w4>","english":"<m4>"}]}
-
-FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ blank>","correct_target":"<target word romanized>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"]}
-
-WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<romanized target-language word, NEVER English>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
-
-Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
-}
+// buildPrompt lives in assets/lib/lessonPrompt.js (shared with the worker).
 
 // LLM output is sometimes almost-JSON rather than JSON: raw control
 // characters left unescaped inside string values ("U+0000 thru U+001F is
@@ -235,8 +208,23 @@ function backendRequest(backend, prompt) {
   });
 }
 
+async function lessonViaProxy(langId, topicId, personalization) {
+  const r = await fetch(`${LESSON_PROXY_URL.replace(/\/$/, "")}/lesson`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Only the three inputs: the server builds the prompt and picks the provider and model.
+    body: JSON.stringify({
+      langId, topicId: topicId || undefined,
+      personalization: { difficulty: personalization?.difficulty, weakWords: personalization?.weakWords },
+    }),
+  });
+  let d;
+  try { d = await r.json(); } catch { d = { error: { message: `HTTP ${r.status}` } }; }
+  return { r, d };
+}
+
 async function fetchLesson(langId, topicId, personalization) {
-  const prompt = buildPrompt(langId, topicId, personalization);
+  const prompt = LESSON_PROXY_URL ? null : buildPrompt(langId, topicId, personalization);
   // Fallback chain: try all backends in order, starting with the configured
   // one, and fall through to the next on ANY failure (rate/size limits, a
   // retired or misnamed model returning 404, a transient 5xx, ...) — one
@@ -244,10 +232,14 @@ async function fetchLesson(langId, topicId, personalization) {
   const ALL_BACKENDS = ["groq", "openrouter", "gemini"];
   const chain = [BACKEND, ...ALL_BACKENDS.filter(b => b !== BACKEND)];
   let r, d;
-  for (const backend of chain) {
-    r = await backendRequest(backend, prompt);
-    d = await r.json();
-    if (r.ok && !d.error) break;
+  if (LESSON_PROXY_URL) {
+    ({ r, d } = await lessonViaProxy(langId, topicId, personalization));
+  } else {
+    for (const backend of chain) {
+      r = await backendRequest(backend, prompt);
+      d = await r.json();
+      if (r.ok && !d.error) break;
+    }
   }
   if (!r.ok || d.error) {
     if (r.status === 429 || r.status === 413) {

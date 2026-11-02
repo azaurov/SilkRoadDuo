@@ -10,6 +10,12 @@
     ]
   },
 
+  // Per-IP limit on /lesson (each call spends provider quota). Secrets are set with
+  // `wrangler secret put GROQ_API_KEY` / OPENROUTER_API_KEY / GEMINI_API_KEY -- never in this file.
+  "ratelimits": [
+    { "name": "LESSON_LIMITER", "namespace_id": "5101", "simple": { "limit": 8, "period": 60 } }
+  ],
+
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["BattleRoom"] }
   ],
