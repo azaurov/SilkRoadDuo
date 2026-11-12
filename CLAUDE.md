@@ -151,7 +151,7 @@ The Prince of Persia theme (`assets/prince_of_persia.mp3`) plays on app launch v
 
 ### Language config
 
-`LANGS` array contains 8 languages: Bukharian, Farsi, Sogdian, Arabic, Uzbek, Hebrew, Aramaic, Futhark (Old Norse; runes shown only on the alphabet screen via bundled NotoSansRunic). Each entry has `id`, `name`, `native`, `emoji`, and three color values (`color`, `shadow`, `pale`) used pervasively for per-language theming.
+`LANGS` array contains 8 languages: Bukharian, Farsi, Sogdian, Arabic, Uzbek, Hebrew, Aramaic, Futhark (Old Norse; runes via bundled NotoSansRunic on the alphabet screen and on MCQ prompt cards, where `word_native` is derived from the romanized word by `assets/lib/runes.js`, never by the AI). Each entry has `id`, `name`, `native`, `emoji`, and three color values (`color`, `shadow`, `pale`) used pervasively for per-language theming.
 
 Sogdian uses romanized transliteration only — both `word` and `word_native` are romanized in prompts, and `word_native` is deleted from AI responses.
 

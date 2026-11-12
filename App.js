@@ -20,6 +20,7 @@ import { recordAnswers, getPersonalization, itemKeyFor } from "./assets/lib/lear
 import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
 import { buildPrompt } from "./assets/lib/lessonPrompt";
 import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
+import { toRunes } from "./assets/lib/runes";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -266,6 +267,11 @@ async function fetchLesson(langId, topicId, personalization) {
   if (langId === "sogdian" || langId === "aramaic" || langId === "futhark") {
     exercises.forEach(ex => { delete ex.word_native; });
   }
+  // Futhark: runes come from our own deterministic table (assets/lib/runes.js), never
+  // from the AI. word_native was stripped above; re-derive it from the romanized word.
+  if (langId === "futhark") {
+    exercises.forEach(ex => { if (ex.type === "mcq" && ex.word) ex.word_native = toRunes(ex.word); });
+  }
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
   const norm = s => (s || "").normalize("NFC").replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").trim().toLowerCase();
   return exercises.filter(ex => {
@@ -341,7 +347,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
   const speak = () => {
     Speech.stop();
     if (nativeVoiceAvailable) {
-      Speech.speak(ex.word_native || ex.word, { language: ttsLocale });
+      Speech.speak(lang.id === "futhark" ? ex.word : (ex.word_native || ex.word), { language: ttsLocale });
     } else {
       Speech.speak(ex.word, {});
     }
@@ -363,7 +369,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
   return (
     <View style={styles.exerciseContainer}>
       <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44" }]}>
-        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: sogdianFont(ex.word_native || ex.word) }]}>
+        <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: sogdianFont(ex.word_native || ex.word) }, lang.id === "futhark" && isNative && ex.word_native && { fontFamily: "NotoSansRunic" }]}>
           {isNative ? (ex.word_native || ex.word) : ex.english}
         </Text>
         {isNative && ex.word_native && ex.word !== ex.word_native && (
