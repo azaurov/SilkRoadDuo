@@ -1,7 +1,7 @@
 {
   "name": "Silk Road Duo",
   "short_name": "SilkRoad",
-  "description": "Learn languages of the Silk Road — Bukharian, Farsi, Arabic, Hebrew, Uzbek, Sogdian, Aramaic",
+  "description": "Learn languages of the Silk Road — Bukharian, Farsi, Arabic, Hebrew, Uzbek, Sogdian, Aramaic, Elder Futhark",
   "lang": "en",
   "start_url": "/SilkRoadDuo/",
   "scope": "/SilkRoadDuo/",

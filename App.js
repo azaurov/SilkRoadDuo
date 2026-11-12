@@ -89,6 +89,11 @@ const LANGS = [
     color: "#26C6DA", shadow: "#00ACC1", pale: "#E0F7FA",
     desc: "Ancient · Lingua franca of the Near East",
   },
+  {
+    id: "futhark", name: "Futhark", native: "Fuþark", emoji: "⚔️",
+    color: "#8D6E63", shadow: "#6D4C41", pale: "#EFEBE9",
+    desc: "Elder Futhark runes · Old Norse of the Varangian route",
+  },
 ];
 
 // Languages with a native-script TTS locale; others use device default (romanized word)
@@ -119,7 +124,7 @@ const ACHIEVEMENTS = [
   { id: "xp_100", name: "XP Collector", emoji: "⚡", desc: "Earn 100 total XP", check: (s) => s.totalXP >= 100 },
   { id: "xp_500", name: "XP Master", emoji: "💎", desc: "Earn 500 total XP", check: (s) => s.totalXP >= 500 },
   { id: "trilingual", name: "Trilingual", emoji: "🗣️", desc: "Try all 3 core languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 },
-  { id: "polyglot", name: "Polyglot", emoji: "🌐", desc: "Try all 7 languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 && s.arabic_xp > 0 && s.uzbek_xp > 0 && s.hebrew_xp > 0 && s.aramaic_xp > 0 },
+  { id: "polyglot", name: "Polyglot", emoji: "🌐", desc: "Try all 8 languages", check: (s) => s.bukharian_xp > 0 && s.farsi_xp > 0 && s.sogdian_xp > 0 && s.arabic_xp > 0 && s.uzbek_xp > 0 && s.hebrew_xp > 0 && s.aramaic_xp > 0 && s.futhark_xp > 0 },
   { id: "perfect_10", name: "Perfectionist", emoji: "🏅", desc: "Complete 10 perfect lessons", check: (s) => s.perfectLessons >= 10 },
   { id: "lessons_5", name: "Dedicated", emoji: "📚", desc: "Complete 5 lessons", check: (s) => s.lessons >= 5 },
   { id: "lessons_25", name: "Scholar", emoji: "🎓", desc: "Complete 25 lessons", check: (s) => s.lessons >= 25 },
@@ -258,7 +263,7 @@ async function fetchLesson(langId, topicId, personalization) {
   // script anyway (the prompt hint alone doesn't stop it) — different vocabulary items
   // sharing a Semitic root then render as near-identical, hard-to-distinguish glyphs
   // in the MCQ prompt card, defeating the exercise.
-  if (langId === "sogdian" || langId === "aramaic") {
+  if (langId === "sogdian" || langId === "aramaic" || langId === "futhark") {
     exercises.forEach(ex => { delete ex.word_native; });
   }
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
@@ -755,7 +760,7 @@ function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
               onPress={() => onSelectLetter(i)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.letterTileGlyph, { color: lang.color }]}>
+              <Text style={[styles.letterTileGlyph, { color: lang.color }, lang.id === "futhark" && { fontFamily: "NotoSansRunic", fontWeight: "400" }]}>
                 {entry.letter}
               </Text>
               <Text style={styles.letterTileName}>{entry.name}</Text>
@@ -1022,7 +1027,7 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center", paddingBottom: 40 }}>
         <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44", width: "100%" }]}>
-          <Text style={[styles.letterBigGlyph, { color: lang.color }]}>
+          <Text style={[styles.letterBigGlyph, { color: lang.color }, lang.id === "futhark" && { fontFamily: "NotoSansRunic", fontWeight: "400" }]}>
             {entry.letter}
           </Text>
           <Text style={styles.promptRomanized}>{entry.name}</Text>
@@ -1054,6 +1059,7 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
             // geometry (and drawn strokes/progress) after Next/Prev.
             key={`${lang.id}-${letterIndex}`}
             letter={entry.letter}
+            fontFamily={lang.id === "futhark" ? "NotoSansRunic" : undefined}
             color={lang.color}
             strokePath={entry.strokePath}
           />
@@ -1859,6 +1865,7 @@ export default function App() {
   const [fontsLoaded] = useFonts({
     NotoSansSogdian: require("./assets/fonts/NotoSansSogdian-Regular.ttf"),
     NotoSansOldUyghur: require("./assets/fonts/NotoSansOldUyghur-Regular.ttf"),
+    NotoSansRunic: require("./assets/fonts/NotoSansRunic-Regular.ttf"),
   });
 
   const [screen, setScreen] = useState("home");

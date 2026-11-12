@@ -140,7 +140,7 @@ scripts/
 | XP Collector | 100 total XP |
 | XP Master | 500 total XP |
 | Trilingual | XP in 3 languages |
-| Polyglot | XP in all 7 languages |
+| Polyglot | XP in all 8 languages |
 | Perfectionist | 10 perfect lessons |
 | Dedicated | 5 lessons |
 | Scholar | 25 lessons |

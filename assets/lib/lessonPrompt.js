@@ -2,7 +2,7 @@
 // Cloudflare Worker's /lesson route, which builds it SERVER-SIDE from validated inputs so the public
 // endpoint can only ever write language lessons, never relay an arbitrary prompt.
 
-export const LESSON_LANGS = ["bukharian", "farsi", "sogdian", "arabic", "uzbek", "hebrew", "aramaic"];
+export const LESSON_LANGS = ["bukharian", "farsi", "sogdian", "arabic", "uzbek", "hebrew", "aramaic", "futhark"];
 export const LESSON_DIFFICULTIES = ["beginner", "intermediate", "advanced"];
 const TOPIC_RE = /^[A-Za-z0-9 &'-]{1,40}$/;       // no quotes/newlines: topicId is embedded in the prompt
 const MAX_WEAK_WORDS = 8;                          // buildPrompt uses slice(0, 8)
@@ -50,6 +50,7 @@ export function buildPrompt(langId, topicId, personalization) {
     uzbek: "Uzbek (modern Latin-script Uzbek)",
     hebrew: "Hebrew (use Hebrew script for word_native, e.g., שלום, ספר, בית — do NOT use Arabic or Latin script for word_native)",
     aramaic: "Aramaic (Classical/Syriac, romanized transliteration only for both word and word_native — do NOT output Syriac script)",
+    futhark: "Old Norse (the language of the Elder Futhark rune tradition; use normalized Old Norse spelling in Latin letters for both word and word_native — do NOT output rune characters)",
   };
   const topicHint = topicId ? ` Focus the vocabulary on the topic: "${topicId}".` : "";
   const difficulty = personalization?.difficulty || "beginner";

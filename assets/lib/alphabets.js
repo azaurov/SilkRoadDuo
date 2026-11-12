@@ -233,6 +233,39 @@ export const ALPHABETS = {
       strokePath: [{x:0.42,y:0.2},{x:0.48,y:0.48},{x:0.67,y:0.53},{x:0.72,y:0.69}] },
   ],
 
+  // Elder Futhark (c. 150–800 CE): 24 runes in the traditional fuþark order.
+  // Rune names are the scholarly reconstructed Proto-Germanic forms (the
+  // runes themselves are attested; their names are not recorded until later
+  // Old English/Norse rune poems), and sound values are approximate.
+  // Rendered with the bundled NotoSansRunic font. No strokePath yet —
+  // tracing falls back to free tracing over the faint reference glyph.
+  futhark: [
+    { letter: "ᚠ", name: "fehu", sound: "f — rune of wealth, cattle", englishLike: "f — fox" },
+    { letter: "ᚢ", name: "uruz", sound: "u — rune of aurochs", englishLike: "oo — moon" },
+    { letter: "ᚦ", name: "thurisaz", sound: "th (as in thorn) — rune of giant", englishLike: "th — thing" },
+    { letter: "ᚨ", name: "ansuz", sound: "a — rune of a god", englishLike: "a — father" },
+    { letter: "ᚱ", name: "raidō", sound: "r — rune of ride, journey", englishLike: "r — road" },
+    { letter: "ᚲ", name: "kaunan", sound: "k — rune of torch, ulcer", englishLike: "k — kite" },
+    { letter: "ᚷ", name: "gebō", sound: "g — rune of gift", englishLike: "g — gift" },
+    { letter: "ᚹ", name: "wunjō", sound: "w — rune of joy", englishLike: "w — win" },
+    { letter: "ᚺ", name: "hagalaz", sound: "h — rune of hail", englishLike: "h — hat" },
+    { letter: "ᚾ", name: "naudiz", sound: "n — rune of need, constraint", englishLike: "n — need" },
+    { letter: "ᛁ", name: "isaz", sound: "i — rune of ice", englishLike: "ee — machine" },
+    { letter: "ᛃ", name: "jēran", sound: "y — rune of year, harvest", englishLike: "y — year" },
+    { letter: "ᛇ", name: "eihwaz", sound: "a long 'ee/ai' vowel — rune of yew tree", englishLike: "no exact English equivalent" },
+    { letter: "ᛈ", name: "perþō", sound: "p — rune of uncertain; perhaps a fruit tree or dice cup", englishLike: "p — pen" },
+    { letter: "ᛉ", name: "algiz", sound: "z / R (a rhotic 's') — rune of elk (or protection)", englishLike: "z — zoo" },
+    { letter: "ᛊ", name: "sōwilō", sound: "s — rune of sun", englishLike: "s — sun" },
+    { letter: "ᛏ", name: "tiwaz", sound: "t — rune of the god Tyr", englishLike: "t — top" },
+    { letter: "ᛒ", name: "berkanan", sound: "b — rune of birch", englishLike: "b — boy" },
+    { letter: "ᛖ", name: "ehwaz", sound: "e — rune of horse", englishLike: "e — bed" },
+    { letter: "ᛗ", name: "mannaz", sound: "m — rune of man, human", englishLike: "m — man" },
+    { letter: "ᛚ", name: "laguz", sound: "l — rune of water, lake", englishLike: "l — lamp" },
+    { letter: "ᛜ", name: "ingwaz", sound: "ng — rune of the god Ing", englishLike: "ng — sing" },
+    { letter: "ᛞ", name: "dagaz", sound: "d — rune of day", englishLike: "d — dog" },
+    { letter: "ᛟ", name: "ōþalan", sound: "o — rune of heritage, estate", englishLike: "o — Norse 'oh'" },
+  ],
+
   // Sogdian used the Sogdian script (a Unicode block descended from Aramaic,
   // via Syriac) — but Android's text shaper (HarfBuzz) can't reliably shape
   // it even with the bundled NotoSansSogdian font (see the note in App.js's
