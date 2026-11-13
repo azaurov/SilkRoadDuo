@@ -35,6 +35,11 @@ export function cleanExercises(exercises, langId) {
         && ex.correct_order.every(w => ex.words.includes(w));
       if (allWordsAreEnglish || !orderMatchesBank) return false;
     }
+    // Drop MCQs that offer the same option twice (compared case/whitespace-insensitively):
+    // the learner is shown two identical buttons.
+    if (ex.type === "mcq" && Array.isArray(ex.options)) {
+      if (new Set(ex.options.map(norm)).size !== ex.options.length) return false;
+    }
     // Drop fillblanks nobody can answer: the AI sometimes lists English meanings as the options
     // while correct_target is the target-language word, so the right answer is never offered
     // (and every tap counts as wrong). Repair first via the case/whitespace-insensitive match.
