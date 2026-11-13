@@ -40,8 +40,11 @@ export function cleanExercises(exercises, langId) {
     if (ex.type === "wordarrange" && ex.words && ex.english) {
       const englishWords = new Set(ex.english.toLowerCase().match(/[a-z']+/g) || []);
       const allWordsAreEnglish = ex.words.every(w => englishWords.has(norm(w)));
-      const orderMatchesBank = ex.correct_order && ex.correct_order.length === ex.words.length
-        && ex.correct_order.every(w => ex.words.includes(w));
+      // Compare as multisets: equal length + "every word is in the bank" still lets through a
+      // correct_order that repeats one word and omits another, which can never be built.
+      const sortedKey = a => a.map(w => String(w)).sort().join("\u0000");
+      const orderMatchesBank = Array.isArray(ex.correct_order) && ex.correct_order.length === ex.words.length
+        && sortedKey(ex.correct_order) === sortedKey(ex.words);
       if (allWordsAreEnglish || !orderMatchesBank) return false;
     }
     // Drop target_to_en MCQs whose options or answer are target-language words, not English.
