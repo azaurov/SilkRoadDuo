@@ -75,5 +75,5 @@ FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ blank>","c
 
 WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<romanized target-language word, NEVER English>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
 
-Rules: real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
+Rules: for direction "target_to_en" every option (and "correct") is an ENGLISH meaning, never a target-language word; only a "en_to_target" MCQ has target-language options. Real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
 }

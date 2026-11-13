@@ -21,6 +21,7 @@ import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
 import { buildPrompt } from "./assets/lib/lessonPrompt";
 import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
 import { toRunes } from "./assets/lib/runes";
+import { futharkStaticLesson } from "./assets/lib/futharkStatic";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -230,6 +231,11 @@ async function lessonViaProxy(langId, topicId, personalization) {
 }
 
 async function fetchLesson(langId, topicId, personalization) {
+  // Futhark numbers/greetings use a hand-checked curriculum (the AI gets Old Norse wrong there).
+  if (langId === "futhark") {
+    const fixed = futharkStaticLesson(topicId);
+    if (fixed) return fixed;
+  }
   const prompt = LESSON_PROXY_URL ? null : buildPrompt(langId, topicId, personalization);
   // Fallback chain: try all backends in order, starting with the configured
   // one, and fall through to the next on ANY failure (rate/size limits, a
