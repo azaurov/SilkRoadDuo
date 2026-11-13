@@ -71,9 +71,9 @@ MCQ: {"type":"mcq","direction":"target_to_en","word":"<romanized>","word_native"
 
 MATCH (4 pairs): {"type":"match","pairs":[{"target":"<romanized>","english":"<meaning>"},{"target":"<w2>","english":"<m2>"},{"target":"<w3>","english":"<m3>"},{"target":"<w4>","english":"<m4>"}]}
 
-FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ blank>","correct_target":"<target word romanized>","options":["<correct>","<wrong1>","<wrong2>","<wrong3>"]}
+FILLBLANK: {"type":"fillblank","template":"<English sentence with ___ in place of one word, followed by that word's English meaning in parentheses, e.g. I have ___ (three) apples>","correct_target":"<target word romanized>","options":["<correct_target exactly>","<wrong1 romanized>","<wrong2 romanized>","<wrong3 romanized>"]}
 
 WORDARRANGE: {"type":"wordarrange","english":"<English sentence>","words":["<romanized target-language word, NEVER English>","<word2>","<word3>","<word4>"],"correct_order":["<word1>","<word3>","<word2>","<word4>"],"hint":"<grammar tip about word order>"}
 
-Rules: for direction "target_to_en" every option (and "correct") is an ENGLISH meaning, never a target-language word; only a "en_to_target" MCQ has target-language options. Real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
+Rules: for direction "target_to_en" every option (and "correct") is an ENGLISH meaning, never a target-language word; only a "en_to_target" MCQ has target-language options. FILLBLANK options are romanized TARGET-language words (never English), and correct_target must be spelled exactly like one of them. Real accurate vocabulary only, shuffle options, culturally rich fun_facts. WORDARRANGE "words" and "correct_order" must be romanized target-language words only — never English words, even though "english" holds the English sentence they translate to.`;
 }

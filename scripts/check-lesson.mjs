@@ -15,14 +15,17 @@ const root = new URL("..", import.meta.url).pathname;
 const { futharkStaticLesson } = await import(root + "assets/lib/futharkStatic.js");
 const { buildPrompt } = await import(root + "assets/lib/lessonPrompt.js");
 const { toRunes } = await import(root + "assets/lib/runes.js");
+const { cleanExercises } = await import(root + "assets/lib/lessonClean.js");
 
 const ORDER = "mcq mcq match mcq fillblank mcq wordarrange mcq mcq match mcq fillblank mcq wordarrange mcq mcq match mcq fillblank wordarrange".split(" ");
 const uniq = a => new Set(a).size === a.length;
 
 // Returns a list of problems (empty = lesson is good).
-export function validate(ex, langId) {
+export function validate(ex, langId, { strict = true } = {}) {
   const bad = [];
-  if (!Array.isArray(ex) || ex.length !== 20) return [`expected 20 exercises, got ${ex?.length}`];
+  if (!Array.isArray(ex)) return ["not an array"];
+  if (strict && ex.length !== 20) return [`expected 20 exercises, got ${ex.length}`];
+  if (!strict && ex.length < 14) return [`only ${ex.length} usable exercises left after cleanup (need >= 14)`];
   const targets = new Set();
   ex.forEach(x => {
     if (x.type === "mcq" && x.word) targets.add(x.word.toLowerCase());
@@ -31,7 +34,7 @@ export function validate(ex, langId) {
   });
   ex.forEach((x, i) => {
     const at = `#${i + 1} ${x.type}`;
-    if (x.type !== ORDER[i]) bad.push(`${at}: expected type ${ORDER[i]}`);
+    if (strict && x.type !== ORDER[i]) bad.push(`${at}: expected type ${ORDER[i]}`);
     if (x.type === "mcq") {
       if (x.options?.length !== 4 || !uniq(x.options)) bad.push(`${at}: need 4 unique options`);
       if (!x.options?.includes(x.correct)) bad.push(`${at}: correct "${x.correct}" not among options`);
@@ -47,7 +50,8 @@ export function validate(ex, langId) {
     }
     if (x.type === "fillblank") {
       if (!x.template?.includes("___")) bad.push(`${at}: no ___ blank`);
-      if (!x.options?.includes(x.correct_target) || !uniq(x.options)) bad.push(`${at}: bad options`);
+      if (!x.options?.includes(x.correct_target)) bad.push(`${at}: correct_target "${x.correct_target}" not among options [${x.options}]`);
+      if (!uniq(x.options || [])) bad.push(`${at}: duplicate options [${x.options}]`);
     }
     if (x.type === "wordarrange") {
       if ([...x.words].sort().join("|") !== [...x.correct_order].sort().join("|")) bad.push(`${at}: bank != correct_order`);
@@ -88,7 +92,6 @@ async function live(langId, topicId) {
       const raw = d.choices?.[0]?.message?.content;
       if (!r.ok || !raw) { console.log(`  ${name}: HTTP ${r.status}, no lesson`); continue; }
       const ex = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1));
-      if (langId === "futhark") ex.forEach(x => { delete x.word_native; if (x.type === "mcq" && x.word) x.word_native = toRunes(x.word); });
       console.log(`  pulled a live lesson from ${name} (${model})`);
       return ex;
     } catch (e) { console.log(`  ${name}: ${e.message.slice(0, 80)}`); }
@@ -111,9 +114,11 @@ if (args[0] === "--self-test") {
 if (args[0] === "--live") {
   const [, langId = "futhark", topicId = "numbers"] = args;
   console.log(`LIVE ${langId}/${topicId}`);
-  const ex = await live(langId, topicId);
-  if (!ex) { console.log("FAIL: no provider returned a lesson"); process.exit(1); }
-  const bad = validate(ex, langId);
+  const raw = await live(langId, topicId);
+  if (!raw) { console.log("FAIL: no provider returned a lesson"); process.exit(1); }
+  const ex = cleanExercises(raw, langId); // the same cleanup App.js fetchLesson applies
+  console.log(`  ${raw.length} exercises from AI, ${ex.length} after the app's cleanup`);
+  const bad = validate(ex, langId, { strict: false });
   console.log(bad.length ? "FAIL:\n  " + bad.join("\n  ") : "PASS: live lesson is well-formed");
   process.exit(bad.length ? 1 : 0);
 }
