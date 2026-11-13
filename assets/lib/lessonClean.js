@@ -22,6 +22,15 @@ export function cleanExercises(exercises, langId) {
   if (langId === "futhark") {
     exercises.forEach(ex => { if (ex.type === "mcq" && ex.word) ex.word_native = toRunes(ex.word); });
   }
+  // Every target-language word this lesson uses (MCQ prompts, match targets, fill answers).
+  // A target_to_en MCQ must offer English meanings; if an option is one of these words the AI
+  // put target-language words in the answer list (e.g. "fjórir / tveir / þrjú / einn").
+  const targetWords = new Set();
+  exercises.forEach(ex => {
+    if (ex.type === "mcq" && ex.word) targetWords.add(norm(ex.word));
+    if (ex.type === "match" && Array.isArray(ex.pairs)) ex.pairs.forEach(p => p?.target && targetWords.add(norm(p.target)));
+    if (ex.type === "fillblank" && ex.correct_target) targetWords.add(norm(ex.correct_target));
+  });
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
   return exercises.filter(ex => {
     // Drop wordarrange exercises where the AI put English words in the bank
@@ -34,6 +43,11 @@ export function cleanExercises(exercises, langId) {
       const orderMatchesBank = ex.correct_order && ex.correct_order.length === ex.words.length
         && ex.correct_order.every(w => ex.words.includes(w));
       if (allWordsAreEnglish || !orderMatchesBank) return false;
+    }
+    // Drop target_to_en MCQs whose options or answer are target-language words, not English.
+    if (ex.type === "mcq" && ex.direction === "target_to_en" && Array.isArray(ex.options)) {
+      if (norm(ex.correct) === norm(ex.word)) return false;
+      if (ex.options.some(o => targetWords.has(norm(o)))) return false;
     }
     // Drop MCQs that offer the same option twice (compared case/whitespace-insensitively):
     // the learner is shown two identical buttons.
