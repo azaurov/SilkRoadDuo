@@ -745,7 +745,9 @@ const TAJIK_TO_RUSSIAN = { "ғ": "г", "Ғ": "Г", "қ": "к", "Қ": "К", "ҳ":
 // Bukharian words/phrases: Russian voice first (Tajik-only letters mapped as above), else a Tajik
 // voice reading the original Cyrillic, else the romanized word in the default voice.
 async function speakBukharianWord(cyrillic, romanized) {
-  if (await deviceHasVoice("ru")) {
+  if (!/[\u0400-\u04FF]/.test(cyrillic || "")) {
+    Speech.speak(romanized || cyrillic || "", {}); // no Cyrillic to hand a Russian/Tajik voice
+  } else if (await deviceHasVoice("ru")) {
     Speech.speak(cyrillic.replace(/[ҒғҚқҲҳҶҷӢӣӮӯ]/g, c => TAJIK_TO_RUSSIAN[c]), { language: "ru-RU" });
   } else if (await deviceHasVoice("tg")) {
     Speech.speak(cyrillic, { language: "tg-TJ" });

@@ -6,6 +6,7 @@ import { toRunes } from "./runes";
 
 // BiDi / zero-width controls the AI sometimes sprinkles into RTL text.
 const INVISIBLES = /[​-‏‪-‮⁦-⁩﻿]/g;
+const ARABIC_SCRIPT = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
 export const norm = s => (s || "").normalize("NFC").replace(INVISIBLES, "").trim().toLowerCase();
 
 export function cleanExercises(exercises, langId) {
@@ -33,6 +34,10 @@ export function cleanExercises(exercises, langId) {
   });
   // Normalize correct answer to exactly match the option string (guards against AI casing/whitespace/BiDi drift)
   return exercises.filter(ex => {
+    // Bukharian is written in Cyrillic here. The AI sometimes slips into Arabic/Persian script
+    // (e.g. word_native "تشکر" for "tashakur"), which is wrong for this app and unreadable by the
+    // Russian/Tajik TTS voices, so drop any exercise containing Arabic-script text.
+    if (langId === "bukharian" && ARABIC_SCRIPT.test(JSON.stringify(ex))) return false;
     // Drop wordarrange exercises where the AI put English words in the bank
     // instead of romanized target-language words (every bank word literally
     // appears in the English sentence), or where correct_order doesn't use

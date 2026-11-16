@@ -43,7 +43,7 @@ export function validateLessonRequest(body) {
 
 export function buildPrompt(langId, topicId, personalization) {
   const names = {
-    bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic script)",
+    bukharian: "Bukharian (Bukhori/Judeo-Tajik, use Cyrillic script for word_native, e.g., салом, рафтан, хуб — do NOT use Arabic/Persian script anywhere, e.g. never تشکر — write ташаккур)",
     farsi: "Farsi (Persian)",
     sogdian: "Sogdian (ancient Silk Road language, romanized transliteration only for both word and word_native)",
     arabic: "Arabic (use both Arabic script and romanized transliteration)",
