@@ -739,7 +739,7 @@ async function deviceHasVoice(prefix) {
 async function speakLetter(lang, entry) {
   Speech.stop();
   const loc = LETTER_VOICE[lang.id];
-  if (loc && await deviceHasVoice(loc.split("-")[0])) Speech.speak(entry.letter, { language: loc });
+  if (loc && await deviceHasVoice(loc.split("-")[0])) Speech.speak(entry.spoken || entry.letter, { language: loc });
   else Speech.speak(entry.name, { language: "en-US" });
 }
 
