@@ -298,6 +298,9 @@ function sogdianFont(text = "") {
   return "NotoSansSogdian";
 }
 
+// Background theme music is off; set to true to bring it back.
+const MUSIC_ENABLED = false;
+
 // Futhark: target-language answers are shown as runes only (comparison logic still uses the
 // romanized strings). English is shown only where the answer itself is a translation.
 const showTarget = (lang, s) => (lang?.id === "futhark" ? toRunes(s) : s);
@@ -1892,7 +1895,7 @@ export default function App() {
     try {
       themePlayer.loop = true;
       themePlayer.volume = 0.5;
-      themePlayer.play();
+      if (MUSIC_ENABLED) themePlayer.play();
     } catch (_) {}
   }, []);
 
@@ -2005,7 +2008,7 @@ export default function App() {
   };
 
   const stopTheme = () => { try { themePlayer.pause(); } catch (_) {} };
-  const resumeTheme = () => { try { themePlayer.play(); } catch (_) {} };
+  const resumeTheme = () => { if (!MUSIC_ENABLED) return; try { themePlayer.play(); } catch (_) {} };
 
   const startLesson = async (lang, topicId) => {
     stopTheme();
