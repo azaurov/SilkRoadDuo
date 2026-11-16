@@ -325,6 +325,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
 
   const speak = () => {
     Speech.stop();
+    if (lang.id === "bukharian") { speakBukharianWord(ex.word_native || ex.word, ex.word); return; }
     if (nativeVoiceAvailable) {
       Speech.speak(lang.id === "futhark" ? ex.word : (ex.word_native || ex.word), { language: ttsLocale });
     } else {
@@ -738,6 +739,19 @@ async function deviceHasVoice(prefix) {
     } catch { return false; }
   }
   return deviceVoiceLangs.has(prefix);
+}
+// Tajik-only Cyrillic letters -> nearest Russian letters, so a Russian voice can read Bukharian words.
+const TAJIK_TO_RUSSIAN = { "ғ": "г", "Ғ": "Г", "қ": "к", "Қ": "К", "ҳ": "х", "Ҳ": "Х", "ҷ": "дж", "Ҷ": "Дж", "ӣ": "и", "Ӣ": "И", "ӯ": "у", "Ӯ": "У" };
+// Bukharian words/phrases: Russian voice first (Tajik-only letters mapped as above), else a Tajik
+// voice reading the original Cyrillic, else the romanized word in the default voice.
+async function speakBukharianWord(cyrillic, romanized) {
+  if (await deviceHasVoice("ru")) {
+    Speech.speak(cyrillic.replace(/[ҒғҚқҲҳҶҷӢӣӮӯ]/g, c => TAJIK_TO_RUSSIAN[c]), { language: "ru-RU" });
+  } else if (await deviceHasVoice("tg")) {
+    Speech.speak(cyrillic, { language: "tg-TJ" });
+  } else {
+    Speech.speak(romanized || cyrillic, {});
+  }
 }
 async function speakLetter(lang, entry) {
   Speech.stop();
