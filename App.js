@@ -725,7 +725,10 @@ function TopicScreen({ lang, onSelect, onBack }) {
 // (Farsi/Arabic/Hebrew/Uzbek natively, Bukharian via a Russian voice for its Cyrillic), the
 // letter itself is spoken; otherwise the letter's romanized name is spoken instead, so the
 // button never goes silent or reads a glyph the voice can't handle.
-const LETTER_VOICE = { farsi: "fa-IR", arabic: "ar-SA", uzbek: "uz-UZ", hebrew: "he-IL", bukharian: "ru-RU" };
+const LETTER_VOICE = { farsi: "fa-IR", arabic: "ar-SA", uzbek: "uz-UZ", hebrew: "he-IL" };
+// Bukharian: Russian voice first (speaks the Russian-style letter name in `spoken`), else a Tajik
+// voice (reads the actual Cyrillic letter, incl. Ғ Қ Ӣ Ӯ Ҳ Ҷ natively), else the romanized name.
+const LETTER_VOICE_FALLBACKS = { bukharian: [{ loc: "ru-RU", useSpoken: true }, { loc: "tg-TJ", useSpoken: false }] };
 let deviceVoiceLangs = null;
 async function deviceHasVoice(prefix) {
   if (!deviceVoiceLangs) {
@@ -738,9 +741,16 @@ async function deviceHasVoice(prefix) {
 }
 async function speakLetter(lang, entry) {
   Speech.stop();
-  const loc = LETTER_VOICE[lang.id];
-  if (loc && await deviceHasVoice(loc.split("-")[0])) Speech.speak(entry.spoken || entry.letter, { language: loc });
-  else Speech.speak(entry.name, { language: "en-US" });
+  const candidates = LETTER_VOICE_FALLBACKS[lang.id]
+    || (LETTER_VOICE[lang.id] ? [{ loc: LETTER_VOICE[lang.id], useSpoken: true }] : []);
+  for (const { loc, useSpoken } of candidates) {
+    if (await deviceHasVoice(loc.split("-")[0])) {
+      const text = useSpoken ? (entry.spoken || entry.letter) : entry.letter.split(" ").pop();
+      Speech.speak(text, { language: loc });
+      return;
+    }
+  }
+  Speech.speak(entry.name, { language: "en-US" });
 }
 
 /* ─── Alphabet: letter grid ─────────────────────────────────────────────── */
