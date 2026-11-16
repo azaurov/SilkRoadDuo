@@ -22,6 +22,7 @@ import { buildPrompt } from "./assets/lib/lessonPrompt";
 import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
 import { cleanExercises } from "./assets/lib/lessonClean";
 import { futharkStaticLesson } from "./assets/lib/futharkStatic";
+import { toRunes } from "./assets/lib/runes";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -297,6 +298,16 @@ function sogdianFont(text = "") {
   return "NotoSansSogdian";
 }
 
+// Futhark: target-language answers are shown as runes only (comparison logic still uses the
+// romanized strings). English is shown only where the answer itself is a translation.
+const showTarget = (lang, s) => (lang?.id === "futhark" ? toRunes(s) : s);
+const runeFont = (lang) => (lang?.id === "futhark" ? { fontFamily: "NotoSansRunic", fontWeight: "400" } : null);
+function feedbackAnswerText(langId, ex) {
+  const isTarget = !(ex.type === "mcq" && ex.direction === "target_to_en");
+  const raw = ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" "));
+  return langId === "futhark" && isTarget && raw ? toRunes(raw) : raw;
+}
+
 /* ─── MCQ Exercise ──────────────────────────────────────────────────────── */
 function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
   const [selected, setSelected] = useState(null);
@@ -340,7 +351,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
         <Text style={[styles.promptWord, { fontSize: isNative ? 38 : 26 }, lang.id === "sogdian" && { fontFamily: sogdianFont(ex.word_native || ex.word) }, lang.id === "futhark" && isNative && ex.word_native && { fontFamily: "NotoSansRunic" }]}>
           {isNative ? (ex.word_native || ex.word) : ex.english}
         </Text>
-        {isNative && ex.word_native && ex.word !== ex.word_native && (
+        {isNative && lang.id !== "futhark" && ex.word_native && ex.word !== ex.word_native && (
           <Text style={styles.promptRomanized}>{ex.word}</Text>
         )}
         <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
@@ -350,7 +361,7 @@ function ExerciseMCQ({ ex, lang, onAnswer, disabled, availableTtsLocales }) {
       <View style={{ gap: 10 }}>
         {ex.options.map((opt, i) => (
           <TouchableOpacity key={i} style={optStyle(opt)} onPress={() => handle(opt)} activeOpacity={0.7}>
-            <Text style={optTextStyle(opt)}>{opt}</Text>
+            <Text style={[optTextStyle(opt), !isNative && runeFont(lang)]}>{isNative ? opt : showTarget(lang, opt)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -388,8 +399,8 @@ function ExerciseFillBlank({ ex, lang, onAnswer, disabled }) {
       <View style={[styles.promptCard, { backgroundColor: lang.pale, borderColor: lang.color + "44" }]}>
         <Text style={styles.fillText}>
           {parts[0]}
-          <Text style={[styles.fillBlank, { color: selected ? lang.color : "#AFAFAF", borderBottomColor: selected ? lang.color : "#AFAFAF" }]}>
-            {selected ? ` ${selected} ` : "  ___  "}
+          <Text style={[styles.fillBlank, runeFont(lang), { color: selected ? lang.color : "#AFAFAF", borderBottomColor: selected ? lang.color : "#AFAFAF" }]}>
+            {selected ? ` ${showTarget(lang, selected)} ` : "  ___  "}
           </Text>
           {parts[1]}
         </Text>
@@ -397,7 +408,7 @@ function ExerciseFillBlank({ ex, lang, onAnswer, disabled }) {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
         {ex.options.map((opt, i) => (
           <TouchableOpacity key={i} style={[optStyle(opt), { flex: 1, minWidth: "45%" }]} onPress={() => handle(opt)} activeOpacity={0.7}>
-            <Text style={optTextStyle(opt)}>{opt}</Text>
+            <Text style={[optTextStyle(opt), runeFont(lang)]}>{showTarget(lang, opt)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -447,8 +458,8 @@ function ExerciseMatch({ ex, lang, onComplete }) {
             return (
               <TouchableOpacity key={i} style={tileStyle(active, isMatched, isWrong)}
                 onPress={() => !isMatched && setSelLeft(p)} activeOpacity={0.7}>
-                <Text style={[styles.matchText, isMatched && { color: "#AFAFAF", textDecorationLine: "line-through" }, active && { color: lang.color }]}>
-                  {p.target}
+                <Text style={[styles.matchText, isMatched && { color: "#AFAFAF", textDecorationLine: "line-through" }, active && { color: lang.color }, runeFont(lang)]}>
+                  {showTarget(lang, p.target)}
                 </Text>
               </TouchableOpacity>
             );
@@ -525,7 +536,7 @@ function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
             {placed.map((w, i) => (
               <TouchableOpacity key={i} onPress={() => removeWord(w, i)}
                 style={[styles.wordChip, { backgroundColor: lang.color }]} activeOpacity={0.7}>
-                <Text style={styles.wordChipText}>{w}</Text>
+                <Text style={[styles.wordChipText, runeFont(lang)]}>{showTarget(lang, w)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -537,7 +548,7 @@ function ExerciseWordArrange({ ex, lang, onAnswer, disabled }) {
         {bank.map((w, i) => (
           <TouchableOpacity key={i} onPress={() => addWord(w, i)}
             style={styles.wordBankChip} activeOpacity={0.7}>
-            <Text style={styles.wordBankChipText}>{w}</Text>
+            <Text style={[styles.wordBankChipText, runeFont(lang)]}>{showTarget(lang, w)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -570,7 +581,7 @@ function FeedbackBar({ correct, funFact, onContinue, lang, correctAnswer }) {
             {correct ? "Excellent!" : "Correct answer:"}
           </Text>
           {!correct && correctAnswer && (
-            <Text style={styles.feedbackAnswer}>{correctAnswer}</Text>
+            <Text style={[styles.feedbackAnswer, lang.id === "futhark" && correctAnswer && /[\u16A0-\u16FF]/.test(correctAnswer) && { fontFamily: "NotoSansRunic", fontWeight: "400" }]}>{correctAnswer}</Text>
           )}
         </View>
       </View>
@@ -1142,7 +1153,7 @@ function LessonScreen({ lang, topicId, exercises, onComplete, onQuit, availableT
       const newHearts = hearts - 1;
       setHearts(newHearts);
       setIsPerfect(false);
-      setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" ")) });
+      setFeedback({ correct: false, correctAnswer: feedbackAnswerText(lang.id, ex) });
       if (newHearts <= 0) {
         setTimeout(() => onComplete({ correctCount, xp, isPerfect: false, outOfHearts: true, topicId, answers: answersRef.current }), 1200);
       }
@@ -1369,7 +1380,7 @@ function BattleScreen({ profile, stopTheme, resumeTheme, availableTtsLocales, on
       setFeedback({ correct: true, funFact: ex.fun_fact || null });
       sendScore(newScore, newCorrect);
     } else {
-      setFeedback({ correct: false, correctAnswer: ex.correct || ex.correct_target || (ex.correct_order && ex.correct_order.join(" ")) });
+      setFeedback({ correct: false, correctAnswer: feedbackAnswerText(selLang.id, ex) });
       sendScore(myScore, myCorrect);
     }
   };
