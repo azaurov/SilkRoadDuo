@@ -19,7 +19,7 @@ import { ProfileSelectScreen, ProfileCreateScreen, ProfileSwitcherModal } from "
 import { recordAnswers, getPersonalization, itemKeyFor } from "./assets/lib/learning";
 import { pushProfile, pullProfile } from "./assets/lib/cloudSync";
 import { buildPrompt } from "./assets/lib/lessonPrompt";
-import { ALPHABETS, ALPHABET_TTS_LANGS } from "./assets/lib/alphabets";
+import { ALPHABETS } from "./assets/lib/alphabets";
 import { cleanExercises } from "./assets/lib/lessonClean";
 import { futharkStaticLesson } from "./assets/lib/futharkStatic";
 import { toRunes } from "./assets/lib/runes";
@@ -720,6 +720,29 @@ function TopicScreen({ lang, onSelect, onBack }) {
   );
 }
 
+/* ─── Alphabet: letter sounds ───────────────────────────────────────────── */
+// Every letter in every language is playable. Where the device has a voice for the script
+// (Farsi/Arabic/Hebrew/Uzbek natively, Bukharian via a Russian voice for its Cyrillic), the
+// letter itself is spoken; otherwise the letter's romanized name is spoken instead, so the
+// button never goes silent or reads a glyph the voice can't handle.
+const LETTER_VOICE = { farsi: "fa-IR", arabic: "ar-SA", uzbek: "uz-UZ", hebrew: "he-IL", bukharian: "ru-RU" };
+let deviceVoiceLangs = null;
+async function deviceHasVoice(prefix) {
+  if (!deviceVoiceLangs) {
+    try {
+      const v = await Speech.getAvailableVoicesAsync();
+      deviceVoiceLangs = new Set(v.map(x => String(x.language || "").split(/[-_]/)[0].toLowerCase()));
+    } catch { return false; }
+  }
+  return deviceVoiceLangs.has(prefix);
+}
+async function speakLetter(lang, entry) {
+  Speech.stop();
+  const loc = LETTER_VOICE[lang.id];
+  if (loc && await deviceHasVoice(loc.split("-")[0])) Speech.speak(entry.letter, { language: loc });
+  else Speech.speak(entry.name, { language: "en-US" });
+}
+
 /* ─── Alphabet: letter grid ─────────────────────────────────────────────── */
 function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
   const letters = ALPHABETS[lang.id] || [];
@@ -749,6 +772,9 @@ function AlphabetListScreen({ lang, onBack, onSelectLetter }) {
                 {entry.letter}
               </Text>
               <Text style={styles.letterTileName}>{entry.name}</Text>
+              <Pressable onPress={() => speakLetter(lang, entry)} style={{ position: "absolute", top: 0, right: 0, padding: 5 }} hitSlop={6} accessibilityLabel={`Play sound of ${entry.name}`}>
+                <Text style={{ fontSize: 13 }}>🔊</Text>
+              </Pressable>
             </TouchableOpacity>
           ))}
         </View>
@@ -989,13 +1015,7 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
   const letters = ALPHABETS[lang.id] || [];
   const entry = letters[letterIndex];
   if (!entry) return null;
-  const canSpeak = ALPHABET_TTS_LANGS.has(lang.id);
-  const ttsLocale = SPEECH_LOCALE[lang.id];
-
-  const speak = () => {
-    Speech.stop();
-    Speech.speak(entry.letter, ttsLocale ? { language: ttsLocale } : {});
-  };
+  const speak = () => speakLetter(lang, entry);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -1016,11 +1036,9 @@ function AlphabetLetterScreen({ lang, letterIndex, onBack, onNext, onPrev }) {
             {entry.letter}
           </Text>
           <Text style={styles.promptRomanized}>{entry.name}</Text>
-          {canSpeak && (
-            <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7}>
-              <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={speak} style={styles.speakBtn} activeOpacity={0.7} accessibilityLabel="Play letter sound">
+            <Text style={[styles.speakBtnText, { color: lang.color }]}>🔊</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ width: "100%", marginTop: 16, gap: 10 }}>
