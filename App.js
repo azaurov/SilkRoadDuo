@@ -298,9 +298,6 @@ function sogdianFont(text = "") {
   return "NotoSansSogdian";
 }
 
-// Background theme music is off; set to true to bring it back.
-const MUSIC_ENABLED = false;
-
 // Futhark: target-language answers are shown as runes only (comparison logic still uses the
 // romanized strings). English is shown only where the answer itself is a translation.
 const showTarget = (lang, s) => (lang?.id === "futhark" ? toRunes(s) : s);
@@ -1723,7 +1720,7 @@ function BattleScreen({ profile, stopTheme, resumeTheme, availableTtsLocales, on
 }
 
 /* ─── Home Screen ───────────────────────────────────────────────────────── */
-function HomeScreen({ onSelect, onAlphabet, stats, onAchievements, onBattle, profile, onSwitchProfile }) {
+function HomeScreen({ musicOn, onToggleMusic, onSelect, onAlphabet, stats, onAchievements, onBattle, profile, onSwitchProfile }) {
   const dailyTip = CULTURAL_TIPS[new Date().getDate() % CULTURAL_TIPS.length];
   const unlockedCount = ACHIEVEMENTS.filter(a => a.check(stats)).length;
 
@@ -1739,6 +1736,13 @@ function HomeScreen({ onSelect, onAlphabet, stats, onAchievements, onBattle, pro
             accessibilityLabel="Reload app"
           >
             <Text style={styles.reloadBtnText}>↺</Text>
+          </Pressable>
+          <Pressable
+            onPress={onToggleMusic}
+            style={[styles.reloadBtn, { right: 58 }]}
+            accessibilityLabel={musicOn ? "Pause music" : "Play music"}
+          >
+            <Text style={[styles.reloadBtnText, { fontSize: 16 }]}>{musicOn ? "⏸" : "▶"}</Text>
           </Pressable>
           <Text style={styles.homeHeaderEyebrow}>THE SILK ROAD</Text>
           <Text style={styles.homeTitle}>Language Lab</Text>
@@ -1890,12 +1894,14 @@ export default function App() {
   }, [activeProfileId]);
   const prefetchedLesson = useRef(null);
   const themePlayer = useAudioPlayer(require("./assets/prince_of_persia.mp3"));
+  // Music starts off; the header button toggles it. The ref lets resumeTheme honor the choice.
+  const [musicOn, setMusicOn] = useState(false);
+  const musicOnRef = useRef(false);
 
   useEffect(() => {
     try {
       themePlayer.loop = true;
       themePlayer.volume = 0.5;
-      if (MUSIC_ENABLED) themePlayer.play();
     } catch (_) {}
   }, []);
 
@@ -2008,7 +2014,13 @@ export default function App() {
   };
 
   const stopTheme = () => { try { themePlayer.pause(); } catch (_) {} };
-  const resumeTheme = () => { if (!MUSIC_ENABLED) return; try { themePlayer.play(); } catch (_) {} };
+  const resumeTheme = () => { if (!musicOnRef.current) return; try { themePlayer.play(); } catch (_) {} };
+  const toggleMusic = () => {
+    const next = !musicOnRef.current;
+    musicOnRef.current = next;
+    setMusicOn(next);
+    try { next ? themePlayer.play() : themePlayer.pause(); } catch (_) {}
+  };
 
   const startLesson = async (lang, topicId) => {
     stopTheme();
@@ -2149,6 +2161,8 @@ export default function App() {
         )}
         {screen === "home" && !showProfileCreate && (
           <HomeScreen
+            musicOn={musicOn}
+            onToggleMusic={toggleMusic}
             onSelect={(lang) => { setActiveLang(lang); setScreen("topic"); }}
             onAlphabet={(lang) => { setActiveLang(lang); setScreen("alphabetList"); }}
             stats={stats}
